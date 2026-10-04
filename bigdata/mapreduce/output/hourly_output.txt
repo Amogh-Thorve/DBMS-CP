@@ -1,0 +1,2 @@
+08:00	TotalTrafficVolume: 2 vehicles
+09:00	TotalTrafficVolume: 1 vehicles

@@ -1,0 +1,2 @@
+Segment_01	TotalEvents: 2	AvgSpeed: 90.0 km/h
+Segment_02	TotalEvents: 1	AvgSpeed: 90.0 km/h

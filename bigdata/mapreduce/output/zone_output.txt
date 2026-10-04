@@ -1,0 +1,2 @@
+Z-DEL-01	TotalViolations: 1	AvgSpeed: 90.0 km/h
+Z-MUM-01	TotalViolations: 2	AvgSpeed: 90.0 km/h

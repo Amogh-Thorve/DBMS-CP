@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  hadoop-single-node:
+    image: apache/hadoop:3.3.6
+    container_name: stvams-hadoop-demo
+    hostname: stvams-hadoop
+    ports:
+      - "9870:9870"  # HDFS NameNode Web UI
+      - "9864:9864"  # HDFS DataNode Web UI
+      - "8088:8088"  # YARN ResourceManager Web UI
+      - "9000:9000"  # HDFS NameNode IPC
+    environment:
+      - HADOOP_HOME=/opt/hadoop
+    command: >
+      bash -c "
+        echo 'Starting STVAMS Single-Node Hadoop Demonstration Container...';
+        /opt/hadoop/bin/hdfs namenode -format -force &&
+        /opt/hadoop/bin/hdfs --daemon start namenode &&
+        /opt/hadoop/bin/hdfs --daemon start datanode &&
+        echo 'HDFS Service Online. Creating STVAMS Layout...' &&
+        /opt/hadoop/bin/hdfs dfs -mkdir -p /stvams/raw_events/2026/09 &&
+        /opt/hadoop/bin/hdfs dfs -mkdir -p /stvams/mapreduce_output &&
+        echo 'HDFS Setup Complete. Keeping process alive...' &&
+        tail -f /dev/null
+      "
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/hadoop/bin/hdfs dfsadmin -report || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 3

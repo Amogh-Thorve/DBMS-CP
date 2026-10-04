@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  oracle-db:
+    image: gvenzl/oracle-free:latest
+    container_name: stvams_oracle
+    ports:
+      - "1521:1521"
+    environment:
+      - ORACLE_PASSWORD=stvams_password
+      - APP_USER=stvams_user
+      - APP_USER_PASSWORD=stvams_password
+    volumes:
+      - oracle_data:/opt/oracle/oradata
+
+  mongodb:
+    image: mongo:6.0
+    container_name: stvams_mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_DATABASE=stvams_events
+    volumes:
+      - mongo_data:/data/db
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.8.2
+    container_name: stvams_elasticsearch
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+
+volumes:
+  oracle_data:
+  mongo_data:
+  es_data:
