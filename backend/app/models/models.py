@@ -190,6 +190,7 @@ class Violation(Base):
 
     vehicle = relationship("Vehicle", back_populates="violations")
     camera = relationship("Camera", back_populates="violations")
+    violation_type = relationship("ViolationType")
     fine = relationship("Fine", back_populates="violation", uselist=False)
     appeal = relationship("Appeal", back_populates="violation", uselist=False)
 

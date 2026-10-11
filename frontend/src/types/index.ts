@@ -17,6 +17,15 @@ export interface DashboardSummary {
   unpaid_fines_count: number;
   active_cameras: number;
   top_violation_zone: string;
+  violations_today?: number;
+  violations_yesterday?: number;
+  pending_fines_amount?: number;
+}
+
+export interface ViolationTrend {
+  date: string;
+  violations: number;
+  fines: number;
 }
 
 export interface AnalyticsZone {
@@ -150,6 +159,12 @@ export interface Violation {
   violation_dt: string;
   status: string;
   remarks?: string;
+  vehicle_reg_no?: string;
+  type_title?: string;
+  camera_code?: string;
+  zone_name?: string;
+  fine_amount?: number;
+  payment_status?: string;
 }
 
 export interface Fine {
@@ -216,5 +231,19 @@ export interface SystemHealth {
   system?: string;
   database?: string;
   engine?: string;
+  mode?: string;
+  format?: string;
+  file?: string;
+  schema?: string;
   details?: string;
+}
+
+export interface SystemDependenciesHealth {
+  core_api: SystemHealth;
+  database: SystemHealth;
+  mongodb: SystemHealth;
+  elasticsearch: SystemHealth;
+  warehouse: SystemHealth;
+  parquet: SystemHealth;
+  hadoop: SystemHealth;
 }

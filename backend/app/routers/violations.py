@@ -27,22 +27,69 @@ def list_violations(
         query = query.filter(Violation.type_id == type_id)
     if status:
         query = query.filter(Violation.status == status)
-    return query.offset(skip).limit(limit).all()
+    viols = query.order_by(Violation.violation_dt.desc()).offset(skip).limit(limit).all()
+    
+    results = []
+    for v in viols:
+        v_dict = {
+            "violation_id": v.violation_id,
+            "vehicle_id": v.vehicle_id,
+            "type_id": v.type_id,
+            "camera_id": v.camera_id,
+            "violation_dt": v.violation_dt,
+            "status": v.status,
+            "remarks": v.remarks,
+            "vehicle_reg_no": v.vehicle.registration_no if v.vehicle else None,
+            "camera_code": v.camera.camera_code if v.camera else None,
+            "zone_name": (v.camera.segment.road.zone.zone_name if v.camera and v.camera.segment and v.camera.segment.road and v.camera.segment.road.zone else None),
+            "fine_amount": float(v.fine.total_amount) if v.fine else None,
+            "payment_status": v.fine.status if v.fine else None,
+        }
+        results.append(v_dict)
+    return results
 
 @router.post("", response_model=ViolationResponse, status_code=201, summary="Register Violation & Issue Fine")
 def register_violation(viol: ViolationCreate, db: Session = Depends(get_db)):
     try:
         res = STVAMService.create_violation_with_fine(db, viol)
-        return res["violation"]
+        v = res["violation"]
+        return {
+            "violation_id": v.violation_id,
+            "vehicle_id": v.vehicle_id,
+            "type_id": v.type_id,
+            "camera_id": v.camera_id,
+            "violation_dt": v.violation_dt,
+            "status": v.status,
+            "remarks": v.remarks,
+            "vehicle_reg_no": v.vehicle.registration_no if v.vehicle else None,
+            "type_title": v.violation_type.title if v.violation_type else None,
+            "camera_code": v.camera.camera_code if v.camera else None,
+            "zone_name": (v.camera.segment.road.zone.zone_name if v.camera and v.camera.segment and v.camera.segment.road and v.camera.segment.road.zone else None),
+            "fine_amount": float(v.fine.total_amount) if v.fine else None,
+            "payment_status": v.fine.status if v.fine else None,
+        }
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 @router.get("/{violation_id}", response_model=ViolationResponse, summary="Get Violation Details")
 def get_violation(violation_id: int, db: Session = Depends(get_db)):
-    viol = db.query(Violation).filter(Violation.violation_id == violation_id).first()
-    if not viol:
+    v = db.query(Violation).filter(Violation.violation_id == violation_id).first()
+    if not v:
         raise HTTPException(status_code=404, detail="Violation not found")
-    return viol
+    return {
+        "violation_id": v.violation_id,
+        "vehicle_id": v.vehicle_id,
+        "type_id": v.type_id,
+        "camera_id": v.camera_id,
+        "violation_dt": v.violation_dt,
+        "status": v.status,
+        "remarks": v.remarks,
+        "vehicle_reg_no": v.vehicle.registration_no if v.vehicle else None,
+        "camera_code": v.camera.camera_code if v.camera else None,
+        "zone_name": (v.camera.segment.road.zone.zone_name if v.camera and v.camera.segment and v.camera.segment.road and v.camera.segment.road.zone else None),
+        "fine_amount": float(v.fine.total_amount) if v.fine else None,
+        "payment_status": v.fine.status if v.fine else None,
+    }
 
 @router.put("/{violation_id}", response_model=ViolationResponse, summary="Update Violation Record")
 def update_violation(violation_id: int, update_data: ViolationUpdate, db: Session = Depends(get_db)):

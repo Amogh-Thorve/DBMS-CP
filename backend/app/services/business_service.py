@@ -25,7 +25,14 @@ class STVAMService:
         fines_sum = db.query(func.sum(Fine.total_amount)).scalar() or 0.0
         payments_sum = db.query(func.sum(Payment.payment_amount)).filter(Payment.status == 'SUCCESS').scalar() or 0.0
         unpaid_count = db.query(Fine).filter(Fine.status.in_(['UNPAID', 'OVERDUE'])).count()
+        pending_fines_sum = db.query(func.sum(Fine.total_amount)).filter(Fine.status.in_(['UNPAID', 'OVERDUE'])).scalar() or 0.0
         active_cams = db.query(Camera).filter(Camera.status == 'ACTIVE').count()
+
+        now = datetime.datetime.utcnow()
+        today_start = datetime.datetime(now.year, now.month, now.day)
+        yesterday_start = today_start - datetime.timedelta(days=1)
+        violations_today = db.query(Violation).filter(Violation.violation_dt >= today_start).count()
+        violations_yesterday = db.query(Violation).filter(Violation.violation_dt >= yesterday_start, Violation.violation_dt < today_start).count()
 
         # Dynamic calculation of top violation zone
         top_zone_query = (
@@ -49,9 +56,33 @@ class STVAMService:
             "total_fines_levied": float(fines_sum),
             "total_fines_collected": float(payments_sum),
             "unpaid_fines_count": unpaid_count,
+            "pending_fines_amount": float(pending_fines_sum),
+            "violations_today": violations_today,
+            "violations_yesterday": violations_yesterday,
             "active_cameras": active_cams,
             "top_violation_zone": top_zone_str
         }
+
+    @staticmethod
+    def get_violation_trends(db: Session, days: int = 7) -> List[Dict[str, Any]]:
+        now = datetime.datetime.utcnow()
+        today = now.date()
+        date_map = {}
+        for i in range(days - 1, -1, -1):
+            d = today - datetime.timedelta(days=i)
+            d_str = d.isoformat()
+            date_map[d_str] = {"date": d_str, "violations": 0, "fines": 0.0}
+
+        start_dt = datetime.datetime.combine(today - datetime.timedelta(days=days - 1), datetime.time.min)
+        viols = db.query(Violation).filter(Violation.violation_dt >= start_dt).all()
+        for v in viols:
+            v_date = v.violation_dt.date().isoformat()
+            if v_date in date_map:
+                date_map[v_date]["violations"] += 1
+                if v.fine:
+                    date_map[v_date]["fines"] += float(v.fine.total_amount)
+
+        return list(date_map.values())
 
     @staticmethod
     def get_violations_by_zone(db: Session) -> List[Dict[str, Any]]:

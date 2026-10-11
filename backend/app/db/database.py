@@ -21,7 +21,11 @@ try:
     engine = create_engine(ORACLE_DATABASE_URL, pool_pre_ping=True)
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 except Exception as e:
-    db_url = "sqlite:///:memory:" if is_testing else "sqlite:///stvams_dev.db"
+    root_db = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../stvams_dev.db"))
+    backend_db = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../stvams_dev.db"))
+    chosen_path = root_db if os.path.exists(root_db) else backend_db
+    norm_path = chosen_path.replace("\\", "/")
+    db_url = "sqlite:///:memory:" if is_testing else f"sqlite:///{norm_path}"
     logger.warning(f"Database connection fallback: {e}. Utilizing {db_url}.")
     if is_testing:
         engine = create_engine(

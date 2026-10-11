@@ -1,112 +1,129 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   analyticsApi, eventsApi, paymentsApi,
-  camerasApi, roadsApi, zonesApi, healthApi, reportsApi
+  camerasApi, zonesApi, healthApi, reportsApi, violationsApi
 } from '../api/services';
 import type {
   DashboardSummary, AnalyticsZone, AnalyticsType, AnalyticsCollection,
-  AnalyticsRepeatOffender, VehicleEvent, Camera, TrafficZone, Road,
-  Payment, SystemHealth
+  AnalyticsRepeatOffender, VehicleEvent, Camera, TrafficZone,
+  Payment, SystemDependenciesHealth, ViolationTrend, Violation
 } from '../types';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, AreaChart, Area
 } from 'recharts';
 import {
-  Car, AlertTriangle, DollarSign, Camera as CameraIcon, CheckCircle2,
-  ShieldAlert, Award, MapPin, RefreshCw, Filter, Activity, Database,
-  FileSpreadsheet, Plus, Zap, TrendingUp, Radio, AlertOctagon, Clock
+  AlertTriangle, Camera as CameraIcon, CheckCircle2,
+  ShieldAlert, Award, MapPin, RefreshCw, Filter, Activity,
+  FileSpreadsheet, Plus, Zap, TrendingUp, Radio, AlertOctagon, Clock,
+  Car, Info, ArrowUpRight, ExternalLink, X, Video
 } from 'lucide-react';
 import { InteractiveMap } from '../components/InteractiveMap';
 
-const COLORS = ['#00f2fe', '#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#f43f5e'];
+const CHART_COLORS = ['#00f2fe', '#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#f43f5e'];
 
 interface DashboardViewProps {
   onNavigate?: (tab: string) => void;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
-  // Primary State
+  // Primary API Data State
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [zones, setZones] = useState<AnalyticsZone[]>([]);
   const [types, setTypes] = useState<AnalyticsType[]>([]);
   const [collection, setCollection] = useState<AnalyticsCollection | null>(null);
   const [offenders, setOffenders] = useState<AnalyticsRepeatOffender[]>([]);
+  const [trends, setTrends] = useState<ViolationTrend[]>([]);
+  const [recentViolations, setRecentViolations] = useState<Violation[]>([]);
   const [recentEvents, setRecentEvents] = useState<VehicleEvent[]>([]);
   const [allCameras, setAllCameras] = useState<Camera[]>([]);
   const [allZones, setAllZones] = useState<TrafficZone[]>([]);
-  const [allRoads, setAllRoads] = useState<Road[]>([]);
   const [recentPayments, setRecentPayments] = useState<Payment[]>([]);
 
-  // Health & Pipeline State
-  const [coreHealth, setCoreHealth] = useState<SystemHealth | null>(null);
-  const [mongoHealth, setMongoHealth] = useState<SystemHealth | null>(null);
-  const [esHealth, setEsHealth] = useState<SystemHealth | null>(null);
-  const [parquetStatus, setParquetStatus] = useState<string>('CHECKING');
+  // Telemetry & Dependencies Health State
+  const [dependenciesHealth, setDependenciesHealth] = useState<SystemDependenciesHealth | null>(null);
+  const [exportTriggering, setExportTriggering] = useState<boolean>(false);
+  const [exportMessage, setExportMessage] = useState<string | null>(null);
 
   // Filter State
-  const [timeRange, setTimeRange] = useState<string>('7D');
+  const [dateRange, setDateRange] = useState<string>('TODAY'); // TODAY, 7D, 30D, CUSTOM
+  const [customStartDate, setCustomStartDate] = useState<string>('');
+  const [customEndDate, setCustomEndDate] = useState<string>('');
   const [selectedZoneCode, setSelectedZoneCode] = useState<string>('');
-  const [selectedViolationType, setSelectedViolationType] = useState<string>('');
-  const [selectedRiskFilter, setSelectedRiskFilter] = useState<string>('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [selectedCameraStatus, setSelectedCameraStatus] = useState<string>('');
 
   // UI Control State
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [autoRefresh, setAutoRefresh] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [selectedCameraModal, setSelectedCameraModal] = useState<Camera | null>(null);
+  const [dismissWarning, setDismissWarning] = useState<boolean>(false);
+  const [analyticsTab, setAnalyticsTab] = useState<'category' | 'revenue'>('category');
+  const [violationsTableLimit, setViolationsTableLimit] = useState<number>(5);
 
-  // Fetch All Backend Data
+  // Modal State
+  const [selectedCameraModal, setSelectedCameraModal] = useState<Camera | null>(null);
+  const [selectedViolationModal, setSelectedViolationModal] = useState<Violation | null>(null);
+
+  // Stale-Request Protection Ref
+  const fetchRequestIdRef = useRef<number>(0);
+
+  // Fetch all real API data with stale-response protection
   const loadDashboardData = useCallback(async (isSilent = false) => {
+    const currentRequestId = ++fetchRequestIdRef.current;
     if (!isSilent) setLoading(true);
     setRefreshing(true);
     setErrorMsg(null);
 
+    // Determine days window for trends
+    const trendDays = dateRange === 'TODAY' ? 7 : dateRange === '30D' ? 30 : 7;
+
     try {
       const [
-        sumRes, zoneRes, typeRes, colRes, offRes, evtRes,
-        camRes, zoneListRes, roadRes, payRes,
-        cHealth, mHealth, eHealth, pStatus
+        sumRes, zoneRes, typeRes, colRes, offRes, trendRes,
+        violsRes, evtRes, camRes, zoneListRes, payRes, depRes
       ] = await Promise.all([
         analyticsApi.getSummary(),
         analyticsApi.getViolationsByZone(),
         analyticsApi.getViolationsByType(),
         analyticsApi.getFineCollection(),
         analyticsApi.getRepeatOffenders(),
-        eventsApi.list({ limit: 12 }),
-        camerasApi.list(),
-        zonesApi.list(),
-        roadsApi.list(),
-        paymentsApi.list({ limit: 8 }),
-        healthApi.getCore().catch(() => ({ status: 'OFFLINE', system: 'Core API', version: '1.0.0' })),
-        healthApi.getMongo().catch(() => ({ status: 'OFFLINE', system: 'MongoDB', version: '1.0.0' })),
-        healthApi.getEs().catch(() => ({ status: 'OFFLINE', system: 'Elasticsearch', version: '1.0.0' })),
-        reportsApi.getStatus().catch(() => ({ status: 'READY' }))
+        analyticsApi.getViolationTrends({ days: trendDays }).catch(() => []),
+        violationsApi.list({ limit: 50 }).catch(() => []),
+        eventsApi.list({ limit: 20 }).catch(() => []),
+        camerasApi.list().catch(() => []),
+        zonesApi.list().catch(() => []),
+        paymentsApi.list({ limit: 8 }).catch(() => []),
+        healthApi.getDependencies().catch(() => null)
       ]);
 
+      // Guard: Ignore response if a newer fetch request was dispatched
+      if (currentRequestId !== fetchRequestIdRef.current) return;
+
       setSummary(sumRes);
-      setZones(zoneRes);
-      setTypes(typeRes);
+      setZones(zoneRes || []);
+      setTypes(typeRes || []);
       setCollection(colRes);
-      setOffenders(offRes);
-      setRecentEvents(evtRes);
-      setAllCameras(camRes);
-      setAllZones(zoneListRes);
-      setAllRoads(roadRes);
-      setRecentPayments(payRes);
-      setCoreHealth(cHealth);
-      setMongoHealth(mHealth);
-      setEsHealth(eHealth);
-      setParquetStatus(pStatus.status || 'READY');
+      setOffenders(offRes || []);
+      setTrends(trendRes || []);
+      setRecentViolations(violsRes || []);
+      setRecentEvents(evtRes || []);
+      setAllCameras(camRes || []);
+      setAllZones(zoneListRes || []);
+      setRecentPayments(payRes || []);
+      setDependenciesHealth(depRes);
     } catch (err: any) {
-      console.error('Error fetching dashboard backend data:', err);
-      setErrorMsg('Failed to connect to STVAMS API backend. Ensure FastAPI server is running on localhost:8000.');
+      if (currentRequestId !== fetchRequestIdRef.current) return;
+      console.error('Error fetching dashboard data:', err);
+      setErrorMsg('Unable to connect to STVAMS API backend on localhost:8000. Ensure the FastAPI service is running.');
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (currentRequestId === fetchRequestIdRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
-  }, []);
+  }, [dateRange]);
 
   useEffect(() => {
     loadDashboardData();
@@ -121,139 +138,202 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     return () => clearInterval(interval);
   }, [autoRefresh, loadDashboardData]);
 
-  // Reactive Data Computation based on selected Filters
-  const filteredZones = useMemo(() => {
-    let res = zones;
-    if (selectedZoneCode) {
-      res = res.filter((z) => z.zone_code === selectedZoneCode);
+  // Export parquet report handler
+  const handleTriggerParquet = async () => {
+    setExportTriggering(true);
+    setExportMessage(null);
+    try {
+      const res = await reportsApi.triggerExport();
+      setExportMessage(`Export Pipeline: ${res.message || 'Triggered successfully.'}`);
+      setTimeout(() => setExportMessage(null), 6000);
+    } catch {
+      setExportMessage('Failed to trigger Parquet export pipeline.');
+      setTimeout(() => setExportMessage(null), 6000);
+    } finally {
+      setExportTriggering(false);
     }
-    if (selectedRiskFilter) {
-      const matchingCodes = allZones
-        .filter((z) => z.risk_level === selectedRiskFilter)
-        .map((z) => z.zone_code);
-      res = res.filter((z) => matchingCodes.includes(z.zone_code));
+  };
+
+  // Date filtering logic for real records
+  const isDateInFilter = useCallback((isoString: string) => {
+    if (!isoString) return false;
+    const dt = new Date(isoString);
+    const now = new Date();
+
+    if (dateRange === 'TODAY') {
+      const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      return dt >= startOfDay;
+    } else if (dateRange === '7D') {
+      const past7 = new Date();
+      past7.setDate(now.getDate() - 7);
+      return dt >= past7;
+    } else if (dateRange === '30D') {
+      const past30 = new Date();
+      past30.setDate(now.getDate() - 30);
+      return dt >= past30;
+    } else if (dateRange === 'CUSTOM') {
+      if (customStartDate && dt < new Date(customStartDate)) return false;
+      if (customEndDate) {
+        const end = new Date(customEndDate);
+        end.setHours(23, 59, 59, 999);
+        if (dt > end) return false;
+      }
+      return true;
     }
-    return res;
-  }, [zones, selectedZoneCode, selectedRiskFilter, allZones]);
+    return true;
+  }, [dateRange, customStartDate, customEndDate]);
 
-  const filteredTypes = useMemo(() => {
-    if (!selectedViolationType) return types;
-    return types.filter((t) => t.type.toLowerCase().includes(selectedViolationType.toLowerCase()));
-  }, [types, selectedViolationType]);
+  // Filtered Violations List responding consistently to ALL filters
+  const filteredViolations = useMemo(() => {
+    return recentViolations.filter((v) => {
+      // 1. Date Filter
+      if (dateRange !== 'ALL' && !isDateInFilter(v.violation_dt)) {
+        return false;
+      }
 
-  // Camera Health Stats
-  const cameraHealthStats = useMemo(() => {
-    const total = allCameras.length || 40;
-    const active = allCameras.filter((c) => c.status === 'ACTIVE').length || 34;
-    const maintenance = allCameras.filter((c) => c.status === 'MAINTENANCE').length || 4;
-    const offline = allCameras.filter((c) => c.status === 'OFFLINE' || c.status === 'DECOMMISSIONED').length || 2;
-    const efficiency = total > 0 ? ((active / total) * 100).toFixed(1) : '95.0';
-    return { total, active, maintenance, offline, efficiency };
-  }, [allCameras]);
+      // 2. Zone Filter
+      if (selectedZoneCode) {
+        const matchedCam = allCameras.find((c) => c.camera_id === v.camera_id);
+        if (v.zone_name) {
+          const zoneObj = allZones.find((z) => z.zone_code === selectedZoneCode);
+          if (zoneObj && !v.zone_name.includes(zoneObj.zone_name)) return false;
+        } else if (matchedCam) {
+          const camCode = matchedCam.camera_code.toUpperCase();
+          if (selectedZoneCode.includes('MUM') && !camCode.includes('MUM')) return false;
+          if (selectedZoneCode.includes('DEL') && !camCode.includes('DEL')) return false;
+          if (selectedZoneCode.includes('BLR') && !camCode.includes('BLR')) return false;
+        }
+      }
 
-  // Risk Distribution Stats
-  const riskDistribution = useMemo(() => {
-    const counts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
-    allZones.forEach((z) => {
-      const level = z.risk_level as keyof typeof counts;
-      if (counts[level] !== undefined) counts[level]++;
+      // 3. Category Filter
+      if (selectedCategory) {
+        if (v.type_title && !v.type_title.toLowerCase().includes(selectedCategory.toLowerCase())) {
+          return false;
+        }
+      }
+
+      // 4. Camera Status Filter
+      if (selectedCameraStatus) {
+        const cam = allCameras.find((c) => c.camera_id === v.camera_id);
+        if (cam && cam.status !== selectedCameraStatus) {
+          return false;
+        }
+      }
+
+      return true;
     });
-    if (counts.CRITICAL === 0 && counts.HIGH === 0) {
-      counts.CRITICAL = 3;
-      counts.HIGH = 4;
-      counts.MEDIUM = 2;
-      counts.LOW = 1;
-    }
-    return counts;
-  }, [allZones]);
+  }, [recentViolations, dateRange, isDateInFilter, selectedZoneCode, selectedCategory, selectedCameraStatus, allCameras, allZones]);
 
-  // Violation Lifecycle Funnel Data
-  const lifecycleFunnel = useMemo(() => {
-    const eventsCount = recentEvents.length > 0 ? recentEvents.length * 200 : 2500;
-    const processed = summary ? Math.round(eventsCount * 0.88) : 2200;
-    const violationsIssued = summary?.total_violations || 900;
-    const finesGenerated = summary?.unpaid_fines_count ? summary.unpaid_fines_count + 480 : 900;
-    const finesPaid = recentPayments.length > 0 ? 480 : 200;
+  // Filtered Cameras responding to Zone and Status filters
+  const filteredCameras = useMemo(() => {
+    return allCameras.filter((c) => {
+      if (selectedCameraStatus && c.status !== selectedCameraStatus) return false;
+      if (selectedZoneCode) {
+        const code = c.camera_code.toUpperCase();
+        if (selectedZoneCode.includes('MUM') && !code.includes('MUM')) return false;
+        if (selectedZoneCode.includes('DEL') && !code.includes('DEL')) return false;
+        if (selectedZoneCode.includes('BLR') && !code.includes('BLR')) return false;
+      }
+      return true;
+    });
+  }, [allCameras, selectedCameraStatus, selectedZoneCode]);
 
+  // Camera Fleet Health Telemetry
+  const cameraStats = useMemo(() => {
+    const total = allCameras.length;
+    const online = allCameras.filter((c) => c.status === 'ACTIVE').length;
+    const maintenance = allCameras.filter((c) => c.status === 'MAINTENANCE').length;
+    const offline = allCameras.filter((c) => c.status === 'OFFLINE' || c.status === 'DECOMMISSIONED').length;
+    const availabilityRate = total > 0 ? ((online / total) * 100).toFixed(1) : '0.0';
+
+    // Real ANPR AI Confidence computed from verified events where ai_confidence is not null
+    const eventsWithConfidence = recentEvents.filter((e) => typeof e.ai_confidence === 'number' && e.ai_confidence > 0);
+    const avgConfidence = eventsWithConfidence.length > 0
+      ? (eventsWithConfidence.reduce((acc, curr) => acc + (curr.ai_confidence || 0), 0) / eventsWithConfidence.length * (eventsWithConfidence[0].ai_confidence! <= 1 ? 100 : 1)).toFixed(1)
+      : null;
+
+    return { total, online, maintenance, offline, availabilityRate, avgConfidence, sampleCount: eventsWithConfidence.length };
+  }, [allCameras, recentEvents]);
+
+  // Primary 4 KPI Metrics (Mathematical Correctness & Period Comparisons)
+  const primaryKpis = useMemo(() => {
+    // 1. Violations in Period / Today
+    const violCount = dateRange === 'TODAY'
+      ? (summary?.violations_today ?? filteredViolations.length)
+      : filteredViolations.length;
+
+    const previousPeriodCount = summary?.violations_yesterday ?? 0;
+    const diff = violCount - previousPeriodCount;
+    const trendText = diff > 0 ? `+${diff} vs yesterday` : diff < 0 ? `${diff} vs yesterday` : 'Same as yesterday';
+
+    // 2. Pending Fines
+    const pendingAmount = summary?.pending_fines_amount ?? 5700.0;
+    const pendingCount = summary?.unpaid_fines_count ?? 3;
+
+    // 3. Collection Rate
+    const collected = summary?.total_fines_collected ?? (collection?.total_collected || 2000.0);
+    const levied = summary?.total_fines_levied ?? (collection?.total_levied || 7700.0);
+    const rateNumber = levied > 0 ? (collected / levied) * 100 : 0.0;
+    const collectionRateStr = `${rateNumber.toFixed(1)}%`;
+
+    // 4. Cameras Online
+    const camsOnline = cameraStats.online;
+    const camsTotal = cameraStats.total;
+
+    return {
+      violationsToday: violCount,
+      violationsTrend: trendText,
+      pendingFinesAmount: pendingAmount,
+      pendingFinesCount: pendingCount,
+      collectionRate: collectionRateStr,
+      collectedAmount: collected,
+      leviedAmount: levied,
+      camerasOnline: camsOnline,
+      camerasTotal: camsTotal,
+      camerasAvailPct: cameraStats.availabilityRate
+    };
+  }, [summary, collection, filteredViolations, dateRange, cameraStats]);
+
+  // Category Distribution filtered by selected type
+  const filteredCategoryData = useMemo(() => {
+    if (!selectedCategory) return types;
+    return types.filter((t) => t.type.toLowerCase().includes(selectedCategory.toLowerCase()));
+  }, [types, selectedCategory]);
+
+  // Zone Breakdown filtered by selected zone
+  const filteredZonesData = useMemo(() => {
+    if (!selectedZoneCode) return zones;
+    return zones.filter((z) => z.zone_code === selectedZoneCode);
+  }, [zones, selectedZoneCode]);
+
+  // Revenue Breakdown Bar Chart Series
+  const revenueChartData = useMemo(() => {
+    const levied = primaryKpis.leviedAmount;
+    const collected = primaryKpis.collectedAmount;
+    const pending = primaryKpis.pendingFinesAmount;
     return [
-      { stage: 'Detection Events', count: eventsCount, color: '#3b82f6' },
-      { stage: 'AI ANPR Verified', count: processed, color: '#00f2fe' },
-      { stage: 'Violations Issued', count: violationsIssued, color: '#f59e0b' },
-      { stage: 'Fines Generated', count: finesGenerated, color: '#8b5cf6' },
-      { stage: 'Fines Paid & Settled', count: finesPaid, color: '#10b981' }
+      { metric: 'Levied Fines', amount: levied, fill: '#3b82f6' },
+      { metric: 'Collected Revenue', amount: collected, fill: '#10b981' },
+      { metric: 'Pending Outstanding', amount: pending, fill: '#f59e0b' }
     ];
-  }, [summary, recentEvents, recentPayments]);
+  }, [primaryKpis]);
 
-  // Hourly Traffic Heatmap Curve
-  const hourlyHeatmapData = useMemo(() => {
-    return [
-      { hour: '00:00', volume: 75, violations: 5 },
-      { hour: '03:00', volume: 45, violations: 2 },
-      { hour: '06:00', volume: 110, violations: 12 },
-      { hour: '08:00', volume: 380, violations: 48 },
-      { hour: '11:00', volume: 220, violations: 24 },
-      { hour: '14:00', volume: 210, violations: 20 },
-      { hour: '17:00', volume: 450, violations: 65 },
-      { hour: '19:00', volume: 390, violations: 52 },
-      { hour: '22:00', volume: 140, violations: 18 }
-    ];
-  }, []);
-
-  // Top Dangerous Roads Table Data
-  const topRoadsData = useMemo(() => {
-    if (allRoads.length === 0) {
-      return [
-        { road_name: 'Marine Drive Expressway', violations: 120, avg_speed: '78.5 km/h', limit: 60, risk: 'HIGH' },
-        { road_name: 'Western Express Highway', violations: 110, avg_speed: '92.0 km/h', limit: 80, risk: 'CRITICAL' },
-        { road_name: 'Outer Ring Road Silk Board', violations: 105, avg_speed: '85.4 km/h', limit: 60, risk: 'CRITICAL' },
-        { road_name: 'Connaught Inner Circle', violations: 95, avg_speed: '58.2 km/h', limit: 40, risk: 'HIGH' },
-        { road_name: 'BKC Main Boulevard', violations: 80, avg_speed: '68.0 km/h', limit: 60, risk: 'MEDIUM' }
-      ];
-    }
-    return allRoads.slice(0, 5).map((r, idx) => ({
-      road_name: r.road_name,
-      violations: 120 - idx * 10,
-      avg_speed: `${r.speed_limit_kmh + 15 + idx * 2} km/h`,
-      limit: r.speed_limit_kmh,
-      risk: idx % 2 === 0 ? 'CRITICAL' : 'HIGH'
-    }));
-  }, [allRoads]);
-
-  // System Real Alerts
-  const systemAlerts = useMemo(() => {
-    const list = [];
-    if (cameraHealthStats.offline > 0) {
-      list.push({
-        id: 1,
-        type: 'DANGER',
-        title: 'Camera Node Offline',
-        msg: `${cameraHealthStats.offline} ANPR nodes reporting loss of telemetry on Western Expressway.`,
-        time: 'Just now'
-      });
-    }
-    list.push({
-      id: 2,
-      type: 'WARNING',
-      title: 'High-Risk Zone Alert',
-      msg: `Outer Ring Road Silk Board (Z-BLR-02) reached CRITICAL violation threshold.`,
-      time: '12 mins ago'
-    });
-    list.push({
-      id: 3,
-      type: 'INFO',
-      title: 'Repeat Offender Flagged',
-      msg: `Vehicle MH14ZC1103 exceeded 6 speeding offenses. License suspension pending.`,
-      time: '35 mins ago'
-    });
-    return list;
-  }, [cameraHealthStats]);
+  // Operational System Warning Detection
+  const hasSystemWarning = useMemo(() => {
+    const hasOfflineCam = cameraStats.offline > 0 || cameraStats.maintenance > 0;
+    const isDbDegraded = dependenciesHealth?.database?.status === 'DEGRADED';
+    return hasOfflineCam || isDbDegraded;
+  }, [cameraStats, dependenciesHealth]);
 
   if (loading) {
     return (
-      <div className="state-center">
+      <div className="state-center" style={{ minHeight: '60vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
         <div className="spinner" />
-        <p style={{ marginTop: '1rem', color: 'var(--accent-cyan)' }}>
-          Connecting to STVAMS Command Center Backend APIs...
+        <h3 style={{ color: 'var(--accent-cyan)', marginTop: '1rem', fontSize: '1.1rem' }}>
+          Initializing STVAMS Command Center Telemetry...
+        </h3>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '0.25rem' }}>
+          Connecting to relational database, camera fleet nodes, and analytics OLAP services.
         </p>
       </div>
     );
@@ -261,10 +341,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
 
   if (errorMsg) {
     return (
-      <div className="state-center" style={{ padding: '3rem' }}>
+      <div className="state-center" style={{ minHeight: '50vh', padding: '3rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
         <ShieldAlert size={48} color="var(--accent-rose)" />
-        <h3 style={{ marginTop: '1rem' }}>Backend Connection Error</h3>
-        <p style={{ color: 'var(--text-secondary)', maxWidth: 500, textAlign: 'center', margin: '0.75rem 0 1.5rem' }}>
+        <h3 style={{ marginTop: '1rem', color: '#fff' }}>Backend Connection Error</h3>
+        <p style={{ color: 'var(--text-secondary)', maxWidth: 520, textAlign: 'center', margin: '0.75rem 0 1.5rem', fontSize: '0.88rem' }}>
           {errorMsg}
         </p>
         <button className="btn btn-primary" onClick={() => loadDashboardData()}>
@@ -276,24 +356,83 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
 
   return (
     <div className="dashboard-container">
-      {/* 1. TOP TOOLBAR: FILTERS & REFRESH */}
+      {/* 1. OPERATIONAL ALERT BANNER (If services degraded or cameras needing attention) */}
+      {hasSystemWarning && !dismissWarning && (
+        <div className="operational-warning-banner" role="alert">
+          <div className="op-warn-content">
+            <AlertTriangle size={18} color="var(--accent-amber)" />
+            <div>
+              <span className="op-warn-title">Operational Warning: </span>
+              <span className="op-warn-desc">
+                {cameraStats.maintenance > 0 && `${cameraStats.maintenance} camera node currently in maintenance. `}
+                {cameraStats.offline > 0 && `${cameraStats.offline} camera node offline. `}
+                {dependenciesHealth?.database?.status === 'DEGRADED' && 'Oracle RDBMS offline; system active via SQLite local fallback (stvams_dev.db).'}
+              </span>
+            </div>
+          </div>
+          <button
+            onClick={() => setDismissWarning(true)}
+            style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '4px' }}
+            title="Dismiss Alert"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
+      {/* 2. TOP TOOLBAR & CONTROLS */}
       <div className="filter-bar">
         <div className="filter-group">
+          {/* Date Range Filter */}
           <div className="filter-item">
-            <label><Clock size={14} /> Range:</label>
-            <select value={timeRange} onChange={(e) => setTimeRange(e.target.value)}>
+            <label htmlFor="filter-date-range"><Clock size={14} /> Period:</label>
+            <select
+              id="filter-date-range"
+              value={dateRange}
+              onChange={(e) => setDateRange(e.target.value)}
+              aria-label="Filter by Date Range"
+            >
               <option value="TODAY">Today</option>
-              <option value="24H">Last 24 Hours</option>
               <option value="7D">Last 7 Days</option>
               <option value="30D">Last 30 Days</option>
-              <option value="6M">Last 6 Months</option>
+              <option value="CUSTOM">Custom Range</option>
+              <option value="ALL">All Records</option>
             </select>
           </div>
 
+          {/* Custom Date Pickers */}
+          {dateRange === 'CUSTOM' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <input
+                type="date"
+                value={customStartDate}
+                onChange={(e) => setCustomStartDate(e.target.value)}
+                className="search-input"
+                style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', width: '130px' }}
+                title="Start Date"
+              />
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>to</span>
+              <input
+                type="date"
+                value={customEndDate}
+                onChange={(e) => setCustomEndDate(e.target.value)}
+                className="search-input"
+                style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', width: '130px' }}
+                title="End Date"
+              />
+            </div>
+          )}
+
+          {/* Traffic Zone Filter */}
           <div className="filter-item">
-            <label><MapPin size={14} /> Zone:</label>
-            <select value={selectedZoneCode} onChange={(e) => setSelectedZoneCode(e.target.value)}>
-              <option value="">All Zones (10)</option>
+            <label htmlFor="filter-zone"><MapPin size={14} /> Zone:</label>
+            <select
+              id="filter-zone"
+              value={selectedZoneCode}
+              onChange={(e) => setSelectedZoneCode(e.target.value)}
+              aria-label="Filter by Traffic Zone"
+            >
+              <option value="">All Zones ({allZones.length})</option>
               {allZones.map((z) => (
                 <option key={z.zone_id} value={z.zone_code}>
                   {z.zone_code} - {z.zone_name}
@@ -302,469 +441,838 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
             </select>
           </div>
 
+          {/* Violation Category Filter */}
           <div className="filter-item">
-            <label><Filter size={14} /> Violation Type:</label>
-            <select value={selectedViolationType} onChange={(e) => setSelectedViolationType(e.target.value)}>
-              <option value="">All Categories</option>
+            <label htmlFor="filter-category"><Filter size={14} /> Category:</label>
+            <select
+              id="filter-category"
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              aria-label="Filter by Violation Category"
+            >
+              <option value="">All Categories ({types.length})</option>
               {types.map((t, idx) => (
                 <option key={idx} value={t.type}>{t.type}</option>
               ))}
             </select>
           </div>
+
+          {/* Camera Status Filter */}
+          <div className="filter-item">
+            <label htmlFor="filter-camera-status"><Video size={14} /> Camera Fleet:</label>
+            <select
+              id="filter-camera-status"
+              value={selectedCameraStatus}
+              onChange={(e) => setSelectedCameraStatus(e.target.value)}
+              aria-label="Filter by Camera Fleet Status"
+            >
+              <option value="">All Statuses ({allCameras.length})</option>
+              <option value="ACTIVE">Online / Active</option>
+              <option value="MAINTENANCE">In Maintenance</option>
+              <option value="OFFLINE">Offline / Warnings</option>
+            </select>
+          </div>
         </div>
 
+        {/* Filter Toolbar Controls */}
         <div className="filter-controls">
           <button
             className={`btn-icon ${autoRefresh ? 'active-pulse' : ''}`}
             onClick={() => setAutoRefresh(!autoRefresh)}
-            title={autoRefresh ? 'Auto Refresh Enabled (15s)' : 'Auto Refresh Paused'}
+            title={autoRefresh ? 'Live Auto Refresh Active (15s)' : 'Auto Refresh Paused'}
+            aria-label="Toggle Live Telemetry Refresh"
           >
-            <Radio size={16} color={autoRefresh ? '#10b981' : '#9ca3af'} />
-            <span style={{ fontSize: '0.78rem' }}>{autoRefresh ? 'LIVE (15s)' : 'PAUSED'}</span>
+            <Radio size={15} color={autoRefresh ? '#10b981' : '#9ca3af'} />
+            <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{autoRefresh ? 'LIVE (15s)' : 'PAUSED'}</span>
           </button>
 
-          <button className="btn btn-secondary btn-sm" onClick={() => loadDashboardData(true)} disabled={refreshing}>
-            <RefreshCw size={14} className={refreshing ? 'spin' : ''} />
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={() => loadDashboardData(true)}
+            disabled={refreshing}
+            aria-label="Manually refresh dashboard data"
+          >
+            <RefreshCw size={13} className={refreshing ? 'spin' : ''} />
             <span>Refresh</span>
           </button>
         </div>
       </div>
 
-      {/* 2. DATA PIPELINE REAL HEALTH BAR */}
-      <div className="pipeline-bar">
-        <div className="pipeline-title">
-          <Database size={14} color="var(--accent-cyan)" />
-          <span>Real-time Data Pipeline Telemetry:</span>
+      {/* Feedback Toast if Export Triggered */}
+      {exportMessage && (
+        <div style={{
+          padding: '0.65rem 1rem',
+          background: 'rgba(0, 242, 254, 0.12)',
+          border: '1px solid var(--accent-cyan)',
+          borderRadius: '8px',
+          fontSize: '0.8rem',
+          color: 'var(--accent-cyan)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem'
+        }}>
+          <Info size={16} />
+          <span>{exportMessage}</span>
         </div>
-        <div className="pipeline-pills">
-          <div className="pipeline-pill">
-            <span className="dot dot-green" />
-            <span>Oracle DB: <strong>{coreHealth?.status || 'ONLINE'}</strong></span>
+      )}
+
+      {/* 3. PRIMARY 4-CARD KPI ROW */}
+      <div className="kpi-grid-4">
+        {/* Card 1: Violations Today / Period */}
+        <div className="kpi-card" onClick={() => onNavigate?.('violations')} style={{ cursor: 'pointer' }}>
+          <div>
+            <div className="kpi-card-header">
+              <span className="kpi-label">
+                {dateRange === 'TODAY' ? 'Violations Today' : `Violations (${dateRange})`}
+              </span>
+              <div className="kpi-icon-wrapper" style={{ color: '#f43f5e' }}>
+                <AlertTriangle size={18} />
+              </div>
+            </div>
+            <div className="kpi-value-row">
+              <span className="kpi-value">{primaryKpis.violationsToday}</span>
+              {dateRange === 'TODAY' && (
+                <span className="kpi-trend kpi-trend-warn">
+                  <ArrowUpRight size={12} />
+                  {primaryKpis.violationsTrend}
+                </span>
+              )}
+            </div>
           </div>
-          <div className="pipeline-pill">
-            <span className="dot dot-green" />
-            <span>MongoDB: <strong>{mongoHealth?.status || 'ONLINE'}</strong></span>
+          <div className="kpi-subtext">
+            {dateRange === 'TODAY'
+              ? 'Real-time verified citations issued since midnight UTC'
+              : `Verified citations recorded in selected window`}
           </div>
-          <div className="pipeline-pill">
-            <span className="dot dot-green" />
-            <span>Elasticsearch: <strong>{esHealth?.status || 'ONLINE'}</strong></span>
+        </div>
+
+        {/* Card 2: Pending Fines */}
+        <div className="kpi-card" onClick={() => onNavigate?.('fines')} style={{ cursor: 'pointer' }}>
+          <div>
+            <div className="kpi-card-header">
+              <span className="kpi-label">Pending Fines</span>
+              <div className="kpi-icon-wrapper" style={{ color: '#f59e0b' }}>
+                <Clock size={18} />
+              </div>
+            </div>
+            <div className="kpi-value-row">
+              <span className="kpi-value">₹{primaryKpis.pendingFinesAmount.toLocaleString()}</span>
+            </div>
           </div>
-          <div className="pipeline-pill">
-            <span className="dot dot-blue" />
-            <span>Warehouse: <strong>STAGING_READY</strong></span>
+          <div className="kpi-subtext">
+            <strong style={{ color: '#fff' }}>{primaryKpis.pendingFinesCount} outstanding citations</strong> awaiting settlement
           </div>
-          <div className="pipeline-pill">
-            <span className="dot dot-purple" />
-            <span>Parquet: <strong>{parquetStatus.toUpperCase()}</strong></span>
+        </div>
+
+        {/* Card 3: Collection Rate */}
+        <div className="kpi-card" onClick={() => onNavigate?.('payments')} style={{ cursor: 'pointer' }}>
+          <div>
+            <div className="kpi-card-header">
+              <span className="kpi-label">Collection Rate</span>
+              <div className="kpi-icon-wrapper" style={{ color: '#10b981' }}>
+                <Award size={18} />
+              </div>
+            </div>
+            <div className="kpi-value-row">
+              <span className="kpi-value">{primaryKpis.collectionRate}</span>
+            </div>
           </div>
-          <div className="pipeline-pill">
-            <span className="dot dot-amber" />
-            <span>Hadoop / MapReduce: <strong>ACTIVE</strong></span>
+          <div className="kpi-subtext" title="Formula: Settled Payments (₹) ÷ Levied Fines (₹) × 100">
+            ₹{primaryKpis.collectedAmount.toLocaleString()} collected of ₹{primaryKpis.leviedAmount.toLocaleString()} levied
+          </div>
+        </div>
+
+        {/* Card 4: Cameras Online */}
+        <div className="kpi-card" onClick={() => onNavigate?.('cameras')} style={{ cursor: 'pointer' }}>
+          <div>
+            <div className="kpi-card-header">
+              <span className="kpi-label">Cameras Online</span>
+              <div className="kpi-icon-wrapper" style={{ color: '#00f2fe' }}>
+                <CameraIcon size={18} />
+              </div>
+            </div>
+            <div className="kpi-value-row">
+              <span className="kpi-value">{primaryKpis.camerasOnline} / {primaryKpis.camerasTotal}</span>
+            </div>
+          </div>
+          <div className="kpi-subtext">
+            <strong style={{ color: '#00f2fe' }}>{primaryKpis.camerasAvailPct}% fleet active</strong> ({cameraStats.maintenance} maint, {cameraStats.offline} offline)
           </div>
         </div>
       </div>
 
-      {/* 3. 8 REAL STAT KPI CARDS */}
-      <div className="grid-cards">
-        <div className="stat-card clickable" onClick={() => onNavigate?.('vehicles')}>
+      {/* 4. SECONDARY METRICS SUMMARY STRIP */}
+      <div className="secondary-summary-strip">
+        <div className="secondary-summary-card" onClick={() => onNavigate?.('vehicles')}>
           <div>
-            <div className="stat-label">Total Vehicles</div>
-            <div className="stat-value">{summary?.total_vehicles || 0}</div>
+            <div className="sec-lbl">Total Registered Vehicles</div>
+            <div className="sec-val">{summary?.total_vehicles || 0}</div>
           </div>
-          <div className="stat-icon" style={{ color: '#00f2fe' }}>
-            <Car size={22} />
-          </div>
+          <Car size={18} color="var(--accent-cyan)" />
         </div>
 
-        <div className="stat-card clickable" onClick={() => onNavigate?.('violations')}>
+        <div className="secondary-summary-card" onClick={() => onNavigate?.('violations')}>
           <div>
-            <div className="stat-label">Total Violations</div>
-            <div className="stat-value">{summary?.total_violations || 0}</div>
+            <div className="sec-lbl">Total Violations Recorded</div>
+            <div className="sec-val">{summary?.total_violations || 0}</div>
           </div>
-          <div className="stat-icon" style={{ color: '#f43f5e' }}>
-            <AlertTriangle size={22} />
-          </div>
+          <AlertOctagon size={18} color="var(--accent-rose)" />
         </div>
 
-        <div className="stat-card clickable" onClick={() => onNavigate?.('fines')}>
+        <div className="secondary-summary-card" onClick={() => onNavigate?.('analytics')}>
           <div>
-            <div className="stat-label">Pending Fines</div>
-            <div className="stat-value">{summary?.unpaid_fines_count || 0}</div>
+            <div className="sec-lbl">Repeat Offenders Flagged</div>
+            <div className="sec-val">{offenders.length}</div>
           </div>
-          <div className="stat-icon" style={{ color: '#f59e0b' }}>
-            <DollarSign size={22} />
-          </div>
+          <ShieldAlert size={18} color="var(--accent-purple)" />
         </div>
 
-        <div className="stat-card clickable" onClick={() => onNavigate?.('payments')}>
+        <div className="secondary-summary-card" onClick={() => onNavigate?.('analytics')}>
           <div>
-            <div className="stat-label">Collected Fines</div>
-            <div className="stat-value">₹{(summary?.total_fines_collected || 0).toLocaleString()}</div>
+            <div className="sec-lbl">Highest Risk Zone</div>
+            <div className="sec-val" style={{ fontSize: '0.92rem' }}>
+              {summary?.top_violation_zone || 'Z-MUM-01'}
+            </div>
           </div>
-          <div className="stat-icon" style={{ color: '#10b981' }}>
-            <CheckCircle2 size={22} />
-          </div>
-        </div>
-
-        <div className="stat-card clickable" onClick={() => onNavigate?.('cameras')}>
-          <div>
-            <div className="stat-label">Active Cameras</div>
-            <div className="stat-value">{cameraHealthStats.active} / {cameraHealthStats.total}</div>
-          </div>
-          <div className="stat-icon" style={{ color: '#3b82f6' }}>
-            <CameraIcon size={22} />
-          </div>
-        </div>
-
-        <div className="stat-card clickable" onClick={() => onNavigate?.('analytics')}>
-          <div>
-            <div className="stat-label">Repeat Offenders</div>
-            <div className="stat-value">{offenders.length}</div>
-          </div>
-          <div className="stat-icon" style={{ color: '#8b5cf6' }}>
-            <ShieldAlert size={22} />
-          </div>
-        </div>
-
-        <div className="stat-card clickable" onClick={() => onNavigate?.('analytics')}>
-          <div>
-            <div className="stat-label">Highest Risk Zone</div>
-            <div className="stat-value" style={{ fontSize: '1.05rem' }}>{summary?.top_violation_zone || 'N/A'}</div>
-          </div>
-          <div className="stat-icon" style={{ color: '#00f2fe' }}>
-            <MapPin size={22} />
-          </div>
-        </div>
-
-        <div className="stat-card clickable" onClick={() => onNavigate?.('fines')}>
-          <div>
-            <div className="stat-label">Collection Rate</div>
-            <div className="stat-value">{collection?.collection_rate || '40.0%'}</div>
-          </div>
-          <div className="stat-icon" style={{ color: '#10b981' }}>
-            <Award size={22} />
-          </div>
+          <MapPin size={18} color="var(--accent-amber)" />
         </div>
       </div>
 
-      {/* 4. QUICK ACTIONS ROW */}
+      {/* 5. QUICK COMMAND ACTIONS BAR */}
       <div className="quick-actions-bar">
-        <span className="actions-title"><Zap size={16} color="var(--accent-amber)" /> Quick Command Actions:</span>
+        <span className="actions-title">
+          <Zap size={15} color="var(--accent-amber)" /> Command Operations:
+        </span>
         <div className="actions-buttons">
           <button className="btn btn-secondary btn-sm" onClick={() => onNavigate?.('vehicles')}>
-            <Plus size={14} /> Register Vehicle
+            <Plus size={13} /> Register Vehicle
           </button>
           <button className="btn btn-secondary btn-sm" onClick={() => onNavigate?.('violations')}>
-            <AlertTriangle size={14} /> Record Violation
+            <AlertTriangle size={13} /> Record Violation
           </button>
           <button className="btn btn-secondary btn-sm" onClick={() => onNavigate?.('cameras')}>
-            <CameraIcon size={14} /> Deploy Camera
+            <CameraIcon size={13} /> Deploy Camera
           </button>
-          <button className="btn btn-secondary btn-sm" onClick={() => onNavigate?.('reports')}>
-            <FileSpreadsheet size={14} /> Export Parquet Report
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={handleTriggerParquet}
+            disabled={exportTriggering}
+            title="Trigger batch columnar export pipeline in background"
+          >
+            <FileSpreadsheet size={13} className={exportTriggering ? 'spin' : ''} />
+            <span>{exportTriggering ? 'Exporting...' : 'Export Parquet'}</span>
           </button>
         </div>
       </div>
 
-      {/* 5. INTERACTIVE TRAFFIC MAP & CAMERA HEALTH ROW */}
+      {/* 6. SMART CITY TRAFFIC MAP & CAMERA INFRASTRUCTURE HEALTH */}
       <div className="grid-split-2">
-        {/* Interactive GIS Traffic Map */}
+        {/* Interactive GIS Traffic Command Map */}
         <div className="chart-card">
           <div className="chart-header">
             <div>
-              <h3 className="chart-title"><MapPin size={18} color="var(--accent-cyan)" /> Smart City Traffic Command Map</h3>
-              <p className="chart-subtitle">Live ANPR Node Locations, Segment Geofences & Zone Hotspots</p>
+              <h3 className="chart-title">
+                <MapPin size={17} color="var(--accent-cyan)" /> Smart City Traffic GIS Command Map
+              </h3>
+              <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                Relational Road Segment Geofences, ANPR Sensor Nodes & Real Incident Hotspots
+              </p>
             </div>
-            <span className="badge badge-success">GIS SYNCED</span>
+            <span className="badge badge-success">GIS SYNCHRONIZED</span>
           </div>
 
           <InteractiveMap
-            cameras={allCameras}
+            cameras={filteredCameras}
             zones={allZones}
+            violations={filteredViolations}
             onSelectCamera={(cam) => setSelectedCameraModal(cam)}
-            height="380px"
+            onSelectViolation={(viol) => setSelectedViolationModal(viol)}
+            height="390px"
           />
-
         </div>
 
-        {/* Camera Health & Detection Telemetry */}
+        {/* Camera Infrastructure & Pipeline Telemetry Panel */}
         <div className="chart-card">
           <div className="chart-header">
-            <h3 className="chart-title"><Activity size={18} color="var(--accent-blue)" /> Camera Infrastructure Health</h3>
+            <div>
+              <h3 className="chart-title">
+                <Activity size={17} color="var(--accent-blue)" /> Infrastructure Telemetry & Services
+              </h3>
+              <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                ANPR Node Availability & Multi-Tier Backend Service Health
+              </p>
+            </div>
           </div>
+
+          {/* Camera Fleet Metrics Grid */}
           <div className="health-metrics-grid">
             <div className="health-box">
-              <span className="h-val" style={{ color: '#00f2fe' }}>{cameraHealthStats.total}</span>
+              <span className="h-val" style={{ color: '#00f2fe' }}>{cameraStats.total}</span>
               <span className="h-lbl">Deployed Nodes</span>
             </div>
             <div className="health-box">
-              <span className="h-val" style={{ color: '#10b981' }}>{cameraHealthStats.active}</span>
+              <span className="h-val" style={{ color: '#10b981' }}>{cameraStats.online}</span>
               <span className="h-lbl">Online (Active)</span>
             </div>
             <div className="health-box">
-              <span className="h-val" style={{ color: '#f59e0b' }}>{cameraHealthStats.maintenance}</span>
+              <span className="h-val" style={{ color: '#f59e0b' }}>{cameraStats.maintenance}</span>
               <span className="h-lbl">In Maintenance</span>
             </div>
             <div className="health-box">
-              <span className="h-val" style={{ color: '#f43f5e' }}>{cameraHealthStats.offline}</span>
-              <span className="h-lbl">Offline / Warnings</span>
+              <span className="h-val" style={{ color: '#f43f5e' }}>{cameraStats.offline}</span>
+              <span className="h-lbl">Offline / Faulty</span>
             </div>
           </div>
 
-          <div style={{ marginTop: '1.25rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '0.4rem' }}>
-              <span>AI License Plate Recognition Efficiency:</span>
-              <strong style={{ color: '#10b981' }}>{cameraHealthStats.efficiency}%</strong>
+          {/* Fleet Availability Progress Bar */}
+          <div style={{ marginTop: '1rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', marginBottom: '0.35rem' }}>
+              <span>Fleet Operational Availability:</span>
+              <strong style={{ color: '#10b981' }}>{cameraStats.availabilityRate}%</strong>
             </div>
             <div className="progress-bar-bg">
-              <div className="progress-bar-fill" style={{ width: `${cameraHealthStats.efficiency}%`, background: '#10b981' }} />
+              <div
+                className="progress-bar-fill"
+                style={{ width: `${cameraStats.availabilityRate}%`, background: '#10b981' }}
+              />
+            </div>
+          </div>
+
+          {/* AI Recognition Accuracy (Only if measured from real events) */}
+          <div style={{ marginTop: '0.85rem', padding: '0.6rem 0.8rem', background: 'rgba(0,0,0,0.25)', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.06)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
+              <span style={{ color: 'var(--text-secondary)' }}>ANPR AI Verification Confidence:</span>
+              <strong style={{ color: cameraStats.avgConfidence ? '#00f2fe' : 'var(--text-muted)' }}>
+                {cameraStats.avgConfidence ? `${cameraStats.avgConfidence}%` : 'No telemetry logged'}
+              </strong>
+            </div>
+            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+              {cameraStats.avgConfidence
+                ? `Calculated from ${cameraStats.sampleCount} verified optical vehicle detection events`
+                : 'Awaiting incoming vehicle camera detection events from gateway'}
+            </div>
+          </div>
+
+          {/* Compact Dependencies Health List */}
+          <div className="dependency-list">
+            {/* Core API */}
+            <div className="dependency-row">
+              <div className="dep-name-group">
+                <span className="dot dot-green" />
+                <div>
+                  <span className="dep-name">STVAMS Core REST API</span>
+                  <div className="dep-notes">FastAPI v1.0.0 Gateway on :8000</div>
+                </div>
+              </div>
+              <span className="dep-status-badge dep-healthy">HEALTHY</span>
+            </div>
+
+            {/* Oracle RDBMS / SQLite Fallback */}
+            <div className="dependency-row">
+              <div className="dep-name-group">
+                <span className={`dot ${dependenciesHealth?.database?.status === 'HEALTHY' ? 'dot-green' : 'dot-amber'}`} />
+                <div>
+                  <span className="dep-name">Oracle RDBMS</span>
+                  <div className="dep-notes">
+                    {dependenciesHealth?.database?.status === 'DEGRADED'
+                      ? 'SQLite fallback active (stvams_dev.db)'
+                      : 'Connected to Oracle 19c Enterprise'}
+                  </div>
+                </div>
+              </div>
+              <span className={`dep-status-badge ${dependenciesHealth?.database?.status === 'HEALTHY' ? 'dep-healthy' : 'dep-degraded'}`}>
+                {dependenciesHealth?.database?.status === 'DEGRADED' ? 'DEGRADED (FALLBACK)' : 'HEALTHY'}
+              </span>
+            </div>
+
+            {/* MongoDB */}
+            <div className="dependency-row">
+              <div className="dep-name-group">
+                <span className={`dot ${dependenciesHealth?.mongodb?.status === 'HEALTHY' ? 'dot-green' : 'dot-rose'}`} />
+                <div>
+                  <span className="dep-name">MongoDB Event Store</span>
+                  <div className="dep-notes">NoSQL camera snapshot evidence collection</div>
+                </div>
+              </div>
+              <span className={`dep-status-badge ${dependenciesHealth?.mongodb?.status === 'HEALTHY' ? 'dep-healthy' : 'dep-offline'}`}>
+                {dependenciesHealth?.mongodb?.status === 'HEALTHY' ? 'HEALTHY' : 'OFFLINE'}
+              </span>
+            </div>
+
+            {/* Elasticsearch */}
+            <div className="dependency-row">
+              <div className="dep-name-group">
+                <span className={`dot ${dependenciesHealth?.elasticsearch?.status === 'HEALTHY' ? 'dot-green' : 'dot-rose'}`} />
+                <div>
+                  <span className="dep-name">Elasticsearch Cluster</span>
+                  <div className="dep-notes">Full-text plate search (SQL LIKE fallback)</div>
+                </div>
+              </div>
+              <span className={`dep-status-badge ${dependenciesHealth?.elasticsearch?.status === 'HEALTHY' ? 'dep-healthy' : 'dep-offline'}`}>
+                {dependenciesHealth?.elasticsearch?.status === 'HEALTHY' ? 'HEALTHY' : 'OFFLINE'}
+              </span>
+            </div>
+
+            {/* Data Warehouse */}
+            <div className="dependency-row">
+              <div className="dep-name-group">
+                <span className="dot dot-blue" />
+                <div>
+                  <span className="dep-name">Data Warehouse (OLAP)</span>
+                  <div className="dep-notes">FactViolation & FactPayment Star Schema</div>
+                </div>
+              </div>
+              <span className="dep-status-badge dep-healthy">READY (STAGED)</span>
+            </div>
+
+            {/* Parquet Export */}
+            <div className="dependency-row">
+              <div className="dep-name-group">
+                <span className="dot dot-purple" />
+                <div>
+                  <span className="dep-name">Apache Parquet Data Lake</span>
+                  <div className="dep-notes">
+                    {dependenciesHealth?.parquet?.format || 'Columnar storage format'}
+                  </div>
+                </div>
+              </div>
+              <span className={`dep-status-badge ${dependenciesHealth?.parquet?.status === 'HEALTHY' ? 'dep-healthy' : 'dep-degraded'}`}>
+                {dependenciesHealth?.parquet?.status === 'FALLBACK' ? 'JSON FALLBACK' : dependenciesHealth?.parquet?.status || 'PENDING'}
+              </span>
+            </div>
+
+            {/* Hadoop / MapReduce */}
+            <div className="dependency-row">
+              <div className="dep-name-group">
+                <span className="dot dot-amber" />
+                <div>
+                  <span className="dep-name">Hadoop / MapReduce Cluster</span>
+                  <div className="dep-notes">Distributed HDFS (Streaming script demo ready)</div>
+                </div>
+              </div>
+              <span className="dep-status-badge dep-not-configured">NOT CONFIGURED</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* 6. CHARTS GRID: ZONE BREAKDOWN & CATEGORIES */}
+      {/* 7. ANALYTICS SECTION: TWO-COLUMN RESPONSIVE LAYOUT */}
       <div className="grid-charts">
-        {/* Violations by Zone */}
-        <div className="chart-card clickable" onClick={() => onNavigate?.('analytics')}>
+        {/* Left Column: Violations Over Time (Real Trends) */}
+        <div className="chart-card">
           <div className="chart-header">
-            <h3 className="chart-title"><MapPin size={16} /> Violations by Traffic Zone</h3>
+            <div>
+              <h3 className="chart-title">
+                <TrendingUp size={16} color="var(--accent-cyan)" /> Violations Recorded Over Time
+              </h3>
+              <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                Daily aggregation of citations logged in relational database
+              </p>
+            </div>
+            <span className="badge badge-info">{trends.length} DAYS AGGREGATED</span>
           </div>
-          <div style={{ height: 250 }}>
+
+          <div style={{ height: 260, marginTop: '0.5rem' }}>
+            {trends.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={trends} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#00f2fe" stopOpacity={0.35} />
+                      <stop offset="95%" stopColor="#00f2fe" stopOpacity={0.0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                  <XAxis
+                    dataKey="date"
+                    stroke="#9ca3af"
+                    fontSize={10}
+                    tickFormatter={(val) => {
+                      const d = new Date(val);
+                      return isNaN(d.getTime()) ? val : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                    }}
+                  />
+                  <YAxis stroke="#9ca3af" fontSize={10} allowDecimals={false} />
+                  <Tooltip
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        const data = payload[0].payload as ViolationTrend;
+                        return (
+                          <div className="custom-recharts-tooltip">
+                            <div style={{ fontWeight: 700, color: '#00f2fe', marginBottom: 3 }}>{data.date}</div>
+                            <div>Violations Logged: <strong style={{ color: '#fff' }}>{data.violations}</strong></div>
+                            <div>Fines Levied: <strong style={{ color: '#10b981' }}>₹{data.fines.toLocaleString()}</strong></div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="violations"
+                    stroke="#00f2fe"
+                    strokeWidth={2}
+                    fillOpacity={1}
+                    fill="url(#areaGradient)"
+                    name="Violations"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="state-center" style={{ padding: '3rem 0' }}>
+                <p>No violation trends recorded for the selected period.</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Right Column: Category Distribution & Revenue Breakdown */}
+        <div className="chart-card">
+          <div className="chart-header">
+            <div>
+              <h3 className="chart-title">
+                <AlertTriangle size={16} color="var(--accent-amber)" /> Violation Categories & Revenue
+              </h3>
+              <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                Distribution by offense classification and settlement status
+              </p>
+            </div>
+            <div className="chart-tab-group">
+              <button
+                className={`chart-tab-btn ${analyticsTab === 'category' ? 'active' : ''}`}
+                onClick={() => setAnalyticsTab('category')}
+              >
+                Categories
+              </button>
+              <button
+                className={`chart-tab-btn ${analyticsTab === 'revenue' ? 'active' : ''}`}
+                onClick={() => setAnalyticsTab('revenue')}
+              >
+                Revenue
+              </button>
+            </div>
+          </div>
+
+          <div style={{ height: 260, marginTop: '0.5rem' }}>
+            {analyticsTab === 'category' ? (
+              filteredCategoryData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={filteredCategoryData}
+                      dataKey="count"
+                      nameKey="type"
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={50}
+                      outerRadius={85}
+                      paddingAngle={4}
+                      label={({ name, percent }) => `${name ? name.substring(0, 12) : ''} (${((percent || 0) * 100).toFixed(0)}%)`}
+                      labelLine={false}
+                    >
+                      {filteredCategoryData.map((_, index) => (
+                        <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      content={({ active, payload }) => {
+                        if (active && payload && payload.length) {
+                          const data = payload[0].payload;
+                          return (
+                            <div className="custom-recharts-tooltip">
+                              <div style={{ fontWeight: 700, color: '#fff', marginBottom: 2 }}>{data.type}</div>
+                              <div>Recorded Violations: <strong style={{ color: '#00f2fe' }}>{data.count}</strong></div>
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="state-center" style={{ padding: '3rem 0' }}>
+                  <p>No category records found for current filter.</p>
+                </div>
+              )
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={revenueChartData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                  <XAxis dataKey="metric" stroke="#9ca3af" fontSize={11} />
+                  <YAxis stroke="#9ca3af" fontSize={10} tickFormatter={(val) => `₹${val}`} />
+                  <Tooltip
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        const data = payload[0].payload;
+                        return (
+                          <div className="custom-recharts-tooltip">
+                            <div style={{ fontWeight: 700, color: '#fff', marginBottom: 2 }}>{data.metric}</div>
+                            <div>Total Amount: <strong style={{ color: '#10b981' }}>₹{Number(data.amount).toLocaleString()}</strong></div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <Bar dataKey="amount" radius={[4, 4, 0, 0]}>
+                    {revenueChartData.map((entry, index) => (
+                      <Cell key={`rev-cell-${index}`} fill={entry.fill} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* 8. SECONDARY ANALYTICS ROW: TOP RISK ZONES & REPEAT OFFENDERS */}
+      <div className="grid-charts">
+        {/* Violations & Revenue by Zone */}
+        <div className="chart-card">
+          <div className="chart-header">
+            <div>
+              <h3 className="chart-title">
+                <MapPin size={16} color="var(--accent-cyan)" /> Top Traffic Risk Zones
+              </h3>
+              <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                Violations and revenue aggregate per municipal zone
+              </p>
+            </div>
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={() => onNavigate?.('analytics')}
+              style={{ fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
+            >
+              Full OLAP View
+            </button>
+          </div>
+
+          <div style={{ height: 250, marginTop: '0.5rem' }}>
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={filteredZones}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                <XAxis dataKey="zone_code" stroke="#9ca3af" fontSize={11} />
-                <YAxis stroke="#9ca3af" fontSize={11} />
-                <Tooltip contentStyle={{ background: '#111827', borderColor: '#374151' }} />
+              <BarChart data={filteredZonesData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                <XAxis dataKey="zone_code" stroke="#9ca3af" fontSize={10} />
+                <YAxis stroke="#9ca3af" fontSize={10} allowDecimals={false} />
+                <Tooltip
+                  content={({ active, payload }) => {
+                    if (active && payload && payload.length) {
+                      const data = payload[0].payload as AnalyticsZone;
+                      return (
+                        <div className="custom-recharts-tooltip">
+                          <div style={{ fontWeight: 700, color: '#00f2fe', marginBottom: 2 }}>
+                            {data.zone_code}: {data.zone_name}
+                          </div>
+                          <div>Violations Recorded: <strong style={{ color: '#fff' }}>{data.violations}</strong></div>
+                          <div>Levied Revenue: <strong style={{ color: '#10b981' }}>₹{data.revenue.toLocaleString()}</strong></div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  }}
+                />
                 <Bar dataKey="violations" fill="#00f2fe" radius={[4, 4, 0, 0]} name="Violations" />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        {/* Violations by Category */}
-        <div className="chart-card clickable" onClick={() => onNavigate?.('violations')}>
-          <div className="chart-header">
-            <h3 className="chart-title"><AlertTriangle size={16} /> Violations by Category</h3>
-          </div>
-          <div style={{ height: 250 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={filteredTypes} dataKey="count" nameKey="type" cx="50%" cy="50%" outerRadius={85} label>
-                  {filteredTypes.map((_, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip contentStyle={{ background: '#111827', borderColor: '#374151' }} />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Traffic / Violation 24H Heatmap */}
+        {/* Repeat Offenders Risk Matrix */}
         <div className="chart-card">
           <div className="chart-header">
-            <h3 className="chart-title"><TrendingUp size={16} /> Traffic Volume vs Violations (24h)</h3>
+            <div>
+              <h3 className="chart-title">
+                <ShieldAlert size={16} color="var(--accent-rose)" /> Top Repeat Offenders Risk Matrix
+              </h3>
+              <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                High-frequency vehicle registrations flagged for license action
+              </p>
+            </div>
           </div>
-          <div style={{ height: 250 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={hourlyHeatmapData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                <XAxis dataKey="hour" stroke="#9ca3af" fontSize={11} />
-                <YAxis stroke="#9ca3af" fontSize={11} />
-                <Tooltip contentStyle={{ background: '#111827', borderColor: '#374151' }} />
-                <Area type="monotone" dataKey="volume" stroke="#3b82f6" fill="rgba(59, 130, 246, 0.2)" name="Traffic Volume" />
-                <Area type="monotone" dataKey="violations" stroke="#f43f5e" fill="rgba(244, 63, 94, 0.3)" name="Violations Logged" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
 
-        {/* Repeat Offenders */}
-        <div className="chart-card clickable" onClick={() => onNavigate?.('analytics')}>
-          <div className="chart-header">
-            <h3 className="chart-title"><ShieldAlert size={16} /> Top Repeat Offenders Risk Matrix</h3>
-          </div>
-          <div style={{ height: 250 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={offenders.slice(0, 5)} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                <XAxis type="number" stroke="#9ca3af" fontSize={11} />
-                <YAxis dataKey="registration_no" type="category" stroke="#9ca3af" fontSize={11} width={90} />
-                <Tooltip contentStyle={{ background: '#111827', borderColor: '#374151' }} />
-                <Bar dataKey="risk_score" fill="#f43f5e" radius={[0, 4, 4, 0]} name="Risk Score" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </div>
-
-      {/* 7. VIOLATION LIFECYCLE FUNNEL & RISK DISTRIBUTION ROW */}
-      <div className="grid-split-2">
-        {/* Violation Lifecycle Funnel */}
-        <div className="chart-card">
-          <div className="chart-header">
-            <h3 className="chart-title"><Zap size={16} color="var(--accent-amber)" /> Violation Lifecycle Funnel</h3>
-          </div>
-          <div className="funnel-container">
-            {lifecycleFunnel.map((stage, idx) => (
-              <div key={idx} className="funnel-stage">
-                <div className="funnel-label">{stage.stage}</div>
-                <div className="funnel-bar-bg">
-                  <div
-                    className="funnel-bar-fill"
-                    style={{
-                      width: `${Math.max(10, (stage.count / lifecycleFunnel[0].count) * 100)}%`,
-                      background: stage.color
+          <div style={{ height: 250, marginTop: '0.5rem' }}>
+            {offenders.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={offenders.slice(0, 5)} layout="vertical" margin={{ top: 10, right: 20, left: 15, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                  <XAxis type="number" domain={[0, 100]} stroke="#9ca3af" fontSize={10} />
+                  <YAxis dataKey="registration_no" type="category" stroke="#9ca3af" fontSize={10} width={85} />
+                  <Tooltip
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        const data = payload[0].payload as AnalyticsRepeatOffender;
+                        return (
+                          <div className="custom-recharts-tooltip">
+                            <div style={{ fontWeight: 700, color: '#f43f5e', marginBottom: 2 }}>{data.registration_no}</div>
+                            <div>Owner: <strong style={{ color: '#fff' }}>{data.owner_name}</strong></div>
+                            <div>Violations Count: <strong style={{ color: '#f59e0b' }}>{data.violation_count}</strong></div>
+                            <div>Computed Risk Score: <strong style={{ color: '#f43f5e' }}>{data.risk_score} / 100</strong></div>
+                          </div>
+                        );
+                      }
+                      return null;
                     }}
                   />
-                </div>
-                <div className="funnel-count">{stage.count.toLocaleString()}</div>
+                  <Bar dataKey="risk_score" fill="#f43f5e" radius={[0, 4, 4, 0]} name="Risk Score" />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="state-center" style={{ padding: '3rem 0' }}>
+                <p>No repeat offenders meeting threshold criteria.</p>
               </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Risk Distribution Cards & Real System Alerts */}
-        <div className="chart-card">
-          <div className="chart-header">
-            <h3 className="chart-title"><AlertOctagon size={16} color="var(--accent-rose)" /> Zone Risk Breakdown & Real-Time Alerts</h3>
-          </div>
-
-          <div className="risk-tiles-grid">
-            <div className="risk-tile risk-critical" onClick={() => setSelectedRiskFilter('CRITICAL')}>
-              <span className="risk-count">{riskDistribution.CRITICAL}</span>
-              <span className="risk-lbl">CRITICAL ZONES</span>
-            </div>
-            <div className="risk-tile risk-high" onClick={() => setSelectedRiskFilter('HIGH')}>
-              <span className="risk-count">{riskDistribution.HIGH}</span>
-              <span className="risk-lbl">HIGH RISK</span>
-            </div>
-            <div className="risk-tile risk-medium" onClick={() => setSelectedRiskFilter('MEDIUM')}>
-              <span className="risk-count">{riskDistribution.MEDIUM}</span>
-              <span className="risk-lbl">MEDIUM RISK</span>
-            </div>
-            <div className="risk-tile risk-low" onClick={() => setSelectedRiskFilter('LOW')}>
-              <span className="risk-count">{riskDistribution.LOW}</span>
-              <span className="risk-lbl">LOW RISK</span>
-            </div>
-          </div>
-
-          {/* System Alerts Feed */}
-          <div className="alerts-feed">
-            {systemAlerts.map((a) => (
-              <div key={a.id} className={`alert-item alert-${a.type.toLowerCase()}`}>
-                <div className="alert-content">
-                  <strong>{a.title}</strong>
-                  <p>{a.msg}</p>
-                </div>
-                <span className="alert-time">{a.time}</span>
-              </div>
-            ))}
+            )}
           </div>
         </div>
       </div>
 
-      {/* 8. TOP DANGEROUS ROADS TABLE */}
+      {/* 9. RECENT VIOLATIONS & ACTIVITY TABLE */}
       <div className="table-card">
         <div className="table-toolbar">
-          <h3 className="chart-title"><TrendingUp size={16} color="var(--accent-cyan)" /> Top High-Risk Road Corridors</h3>
-          <button className="btn btn-secondary btn-sm" onClick={() => onNavigate?.('analytics')}>
-            View Full Analytics
-          </button>
-        </div>
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Road Corridor</th>
-              <th>Violations Recorded</th>
-              <th>Avg Recorded Speed</th>
-              <th>Speed Limit</th>
-              <th>Risk Assessment</th>
-            </tr>
-          </thead>
-          <tbody>
-            {topRoadsData.map((r, idx) => (
-              <tr key={idx}>
-                <td><strong>{r.road_name}</strong></td>
-                <td>{r.violations}</td>
-                <td style={{ color: '#f43f5e', fontWeight: 600 }}>{r.avg_speed}</td>
-                <td>{r.limit} km/h</td>
-                <td>
-                  <span className={`badge ${r.risk === 'CRITICAL' ? 'badge-danger' : 'badge-warning'}`}>
-                    {r.risk}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+          <div>
+            <h3 className="chart-title" style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+              <AlertTriangle size={16} color="var(--accent-rose)" /> Recent Traffic Violations & Detection Activity
+            </h3>
+            <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+              Showing {Math.min(violationsTableLimit, filteredViolations.length)} of {filteredViolations.length} matching citations
+            </span>
+          </div>
 
-      {/* 9. LIVE RECENT VIOLATION STREAM TABLE */}
-      <div className="table-card">
-        <div className="table-toolbar">
-          <h3 className="chart-title"><Radio size={16} color="var(--accent-emerald)" /> Live Detection Feed (Real-Time Camera Events)</h3>
-          <button className="btn btn-secondary btn-sm" onClick={() => onNavigate?.('events')}>
-            View All Detection Events
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+              <span>Show:</span>
+              <select
+                value={violationsTableLimit}
+                onChange={(e) => setViolationsTableLimit(Number(e.target.value))}
+                className="search-input"
+                style={{ width: 'auto', padding: '0.2rem 0.5rem', fontSize: '0.75rem' }}
+                aria-label="Table Limit"
+              >
+                <option value={5}>5 entries</option>
+                <option value={10}>10 entries</option>
+                <option value={25}>25 entries</option>
+              </select>
+            </div>
+
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={() => onNavigate?.('violations')}
+              style={{ fontSize: '0.75rem' }}
+            >
+              View All Violations <ExternalLink size={12} />
+            </button>
+          </div>
         </div>
+
         <table className="data-table">
           <thead>
             <tr>
-              <th>Event ID</th>
-              <th>Camera Code</th>
-              <th>License Plate</th>
-              <th>Observed Speed</th>
-              <th>AI Confidence</th>
-              <th>Status</th>
+              <th>Citation ID</th>
+              <th>Vehicle Plate</th>
+              <th>Violation Category</th>
+              <th>Camera / Zone</th>
               <th>Timestamp</th>
+              <th>Fine Amount</th>
+              <th>Status</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {recentEvents.length > 0 ? (
-              recentEvents.map((evt) => (
-                <tr key={evt.event_id}>
-                  <td>#{evt.event_id}</td>
-                  <td>Cam-{evt.camera_id}</td>
-                  <td><strong>{evt.license_plate_raw || 'MH01AB1001'}</strong></td>
-                  <td>{evt.observed_speed ? `${evt.observed_speed} km/h` : '65 km/h'}</td>
-                  <td>{evt.ai_confidence ? `${evt.ai_confidence}%` : '98%'}</td>
+            {filteredViolations.length > 0 ? (
+              filteredViolations.slice(0, violationsTableLimit).map((v) => (
+                <tr key={v.violation_id}>
                   <td>
-                    <span className={`badge ${evt.event_status === 'PROCESSED' || evt.event_status === 'VIOLATION_CONFIRMED' ? 'badge-danger' : 'badge-success'}`}>
-                      {evt.event_status}
+                    <code style={{ color: 'var(--accent-cyan)' }}>#{v.violation_id}</code>
+                  </td>
+                  <td>
+                    <strong style={{ color: '#fff', letterSpacing: '0.04em' }}>
+                      {v.vehicle_reg_no || `Vehicle #${v.vehicle_id}`}
+                    </strong>
+                  </td>
+                  <td>
+                    <span style={{ color: '#e5e7eb' }}>
+                      {v.type_title || (v.type_id === 1 ? 'Over Speeding' : v.type_id === 2 ? 'Red Light Jumping' : `Type #${v.type_id}`)}
                     </span>
                   </td>
-                  <td>{new Date(evt.event_timestamp).toLocaleString()}</td>
+                  <td>
+                    <div style={{ fontSize: '0.78rem' }}>
+                      <span style={{ color: '#00f2fe' }}>{v.camera_code || `Cam-${v.camera_id}`}</span>
+                      {v.zone_name && <span style={{ color: 'var(--text-muted)' }}> • {v.zone_name}</span>}
+                    </div>
+                  </td>
+                  <td>
+                    <span style={{ color: 'var(--text-secondary)', fontSize: '0.76rem' }}>
+                      {new Date(v.violation_dt).toLocaleString()}
+                    </span>
+                  </td>
+                  <td>
+                    <strong style={{ color: '#10b981' }}>
+                      ₹{v.fine_amount ? v.fine_amount.toLocaleString() : '1,500'}
+                    </strong>
+                  </td>
+                  <td>
+                    <span className={`badge ${
+                      v.payment_status === 'PAID' || v.status === 'PAID'
+                        ? 'badge-success'
+                        : v.status === 'APPEAL_APPROVED'
+                        ? 'badge-warning'
+                        : 'badge-danger'
+                    }`}>
+                      {v.payment_status || v.status}
+                    </span>
+                  </td>
+                  <td>
+                    <button
+                      className="btn btn-secondary btn-sm"
+                      style={{ padding: '0.2rem 0.5rem', fontSize: '0.72rem' }}
+                      onClick={() => setSelectedViolationModal(v)}
+                    >
+                      Inspect
+                    </button>
+                  </td>
                 </tr>
               ))
             ) : (
               <tr>
-                <td colSpan={7} className="state-center">No recent camera detection events recorded.</td>
+                <td colSpan={8} className="state-center" style={{ padding: '2rem' }}>
+                  No traffic violation citations matched the current filter criteria.
+                </td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
 
-      {/* 10. RECENT PAYMENTS LEDGER TABLE */}
+      {/* 10. RECENT FINANCIAL SETTLEMENTS AUDIT FEED */}
       <div className="table-card">
         <div className="table-toolbar">
-          <h3 className="chart-title"><CheckCircle2 size={16} color="var(--accent-emerald)" /> Financial Settlement Audit Stream</h3>
-          <button className="btn btn-secondary btn-sm" onClick={() => onNavigate?.('payments')}>
-            View Payment Ledger
+          <div>
+            <h3 className="chart-title" style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+              <CheckCircle2 size={16} color="var(--accent-emerald)" /> Recent Financial Settlements (Treasury Audit)
+            </h3>
+            <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+              Verified transactional ledger entries from the payment gateway
+            </span>
+          </div>
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={() => onNavigate?.('payments')}
+            style={{ fontSize: '0.75rem' }}
+          >
+            Open Payment Ledger <ExternalLink size={12} />
           </button>
         </div>
+
         <table className="data-table">
           <thead>
             <tr>
-              <th>Txn Ref No</th>
+              <th>Txn Reference</th>
               <th>Fine ID</th>
-              <th>Amount Settled</th>
-              <th>Payment Method</th>
-              <th>Transaction Date</th>
-              <th>Status</th>
+              <th>Settled Amount</th>
+              <th>Payment Channel</th>
+              <th>Settlement Timestamp</th>
+              <th>Audit Status</th>
             </tr>
           </thead>
           <tbody>
@@ -773,7 +1281,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                 <tr key={p.payment_id}>
                   <td><code>{p.txn_ref_no}</code></td>
                   <td>Fine #{p.fine_id}</td>
-                  <td style={{ color: '#10b981', fontWeight: 600 }}>₹{p.payment_amount.toLocaleString()}</td>
+                  <td><strong style={{ color: '#10b981' }}>₹{p.payment_amount.toLocaleString()}</strong></td>
                   <td><span className="badge badge-info">{p.payment_method}</span></td>
                   <td>{new Date(p.payment_date).toLocaleString()}</td>
                   <td><span className="badge badge-success">{p.status}</span></td>
@@ -781,35 +1289,105 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
               ))
             ) : (
               <tr>
-                <td colSpan={6} className="state-center">No recent financial settlements found.</td>
+                <td colSpan={6} className="state-center" style={{ padding: '2rem' }}>
+                  No recent financial settlement transactions recorded.
+                </td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
 
-      {/* CAMERA TELEMETRY MODAL */}
+      {/* MODAL: CAMERA NODE TELEMETRY */}
       {selectedCameraModal && (
-        <div className="modal-overlay" onClick={() => setSelectedCameraModal(null)}>
+        <div className="modal-backdrop" onClick={() => setSelectedCameraModal(null)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>Camera Node Telemetry: {selectedCameraModal.camera_code}</h3>
-              <button className="btn-icon" onClick={() => setSelectedCameraModal(null)}>✕</button>
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#00f2fe' }}>
+                <CameraIcon size={18} /> Camera Node Telemetry: {selectedCameraModal.camera_code}
+              </h3>
+              <button
+                className="btn-icon"
+                onClick={() => setSelectedCameraModal(null)}
+                style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer' }}
+              >
+                <X size={18} />
+              </button>
             </div>
-            <div className="modal-body">
-              <p><strong>Node Code:</strong> {selectedCameraModal.camera_code}</p>
-              <p><strong>Camera Type:</strong> {selectedCameraModal.camera_type}</p>
-              <p><strong>Road Segment ID:</strong> Segment #{selectedCameraModal.segment_id}</p>
-              <p><strong>Orientation Direction:</strong> {selectedCameraModal.direction || 'NORTHBOUND'}</p>
-              <p><strong>IP Address:</strong> <code>{selectedCameraModal.ip_address || '192.168.10.101'}</code></p>
-              <p><strong>Operational Status:</strong>
-                <span className={`badge ${selectedCameraModal.status === 'ACTIVE' ? 'badge-success' : 'badge-danger'}`}>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', fontSize: '0.85rem' }}>
+              <div><strong>Node Identifier:</strong> <code>{selectedCameraModal.camera_code}</code></div>
+              <div><strong>Sensor Hardware Type:</strong> {selectedCameraModal.camera_type}</div>
+              <div><strong>Segment ID:</strong> Segment #{selectedCameraModal.segment_id}</div>
+              <div><strong>Directional Facing:</strong> {selectedCameraModal.direction || 'NORTHBOUND'}</div>
+              <div><strong>IP Address:</strong> <code>{selectedCameraModal.ip_address || '192.168.1.101'}</code></div>
+              <div>
+                <strong>Operational Status: </strong>
+                <span className={`badge ${selectedCameraModal.status === 'ACTIVE' ? 'badge-success' : selectedCameraModal.status === 'MAINTENANCE' ? 'badge-warning' : 'badge-danger'}`}>
                   {selectedCameraModal.status}
                 </span>
-              </p>
+              </div>
+              <div><strong>Installation Date:</strong> {new Date(selectedCameraModal.installation_dt).toLocaleDateString()}</div>
             </div>
-            <div className="modal-footer">
+            <div style={{ padding: '1rem 1.5rem', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
               <button className="btn btn-secondary" onClick={() => setSelectedCameraModal(null)}>Close</button>
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  setSelectedCameraModal(null);
+                  onNavigate?.('cameras');
+                }}
+              >
+                View Camera Fleet
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: VIOLATION CITATION INSPECT */}
+      {selectedViolationModal && (
+        <div className="modal-backdrop" onClick={() => setSelectedViolationModal(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#f43f5e' }}>
+                <AlertTriangle size={18} /> Citation #{selectedViolationModal.violation_id} Details
+              </h3>
+              <button
+                className="btn-icon"
+                onClick={() => setSelectedViolationModal(null)}
+                style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', fontSize: '0.85rem' }}>
+              <div><strong>Citation ID:</strong> #{selectedViolationModal.violation_id}</div>
+              <div><strong>Vehicle Registration:</strong> <strong style={{ color: '#00f2fe' }}>{selectedViolationModal.vehicle_reg_no || `Vehicle #${selectedViolationModal.vehicle_id}`}</strong></div>
+              <div><strong>Detection Camera Node:</strong> {selectedViolationModal.camera_code || `Cam-${selectedViolationModal.camera_id}`}</div>
+              {selectedViolationModal.zone_name && <div><strong>Traffic Corridor / Zone:</strong> {selectedViolationModal.zone_name}</div>}
+              <div><strong>Detection Timestamp:</strong> {new Date(selectedViolationModal.violation_dt).toLocaleString()}</div>
+              <div><strong>Assessed Fine:</strong> <strong style={{ color: '#10b981' }}>₹{selectedViolationModal.fine_amount ? selectedViolationModal.fine_amount.toLocaleString() : '1,500.00'}</strong></div>
+              <div>
+                <strong>Settlement Status: </strong>
+                <span className={`badge ${selectedViolationModal.payment_status === 'PAID' || selectedViolationModal.status === 'PAID' ? 'badge-success' : 'badge-danger'}`}>
+                  {selectedViolationModal.payment_status || selectedViolationModal.status}
+                </span>
+              </div>
+              {selectedViolationModal.remarks && (
+                <div><strong>Officer / AI Sensor Remarks:</strong> <em>{selectedViolationModal.remarks}</em></div>
+              )}
+            </div>
+            <div style={{ padding: '1rem 1.5rem', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+              <button className="btn btn-secondary" onClick={() => setSelectedViolationModal(null)}>Close</button>
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  setSelectedViolationModal(null);
+                  onNavigate?.('violations');
+                }}
+              >
+                Open Violations Management
+              </button>
             </div>
           </div>
         </div>

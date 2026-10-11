@@ -68,6 +68,14 @@ def read_root():
         "docs": f"{settings.API_V1_STR}/docs"
     }
 
+@app.get("/health", tags=["Root"])
+def root_health():
+    return {
+        "status": "HEALTHY",
+        "system": settings.APP_NAME,
+        "version": "1.0.0"
+    }
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

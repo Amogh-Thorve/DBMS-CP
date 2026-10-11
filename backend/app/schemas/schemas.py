@@ -127,6 +127,12 @@ class ViolationResponse(BaseModel):
     violation_dt: datetime
     status: str
     remarks: Optional[str] = None
+    vehicle_reg_no: Optional[str] = None
+    type_title: Optional[str] = None
+    camera_code: Optional[str] = None
+    zone_name: Optional[str] = None
+    fine_amount: Optional[float] = None
+    payment_status: Optional[str] = None
     model_config = ConfigDict(from_attributes=True)
 
 # Fine Schemas
@@ -370,6 +376,11 @@ class AnalyticsRepeatOffenderResponse(BaseModel):
     violation_count: int
     risk_score: float
 
+class ViolationTrendResponse(BaseModel):
+    date: str
+    violations: int
+    fines: float
+
 # Analytics Summary Schema
 class DashboardSummary(BaseModel):
     total_vehicles: int
@@ -380,4 +391,8 @@ class DashboardSummary(BaseModel):
     unpaid_fines_count: int
     active_cameras: int
     top_violation_zone: str
+    violations_today: Optional[int] = 0
+    violations_yesterday: Optional[int] = 0
+    pending_fines_amount: Optional[float] = 0.0
+
 

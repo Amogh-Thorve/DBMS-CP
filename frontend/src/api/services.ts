@@ -1,8 +1,8 @@
 import { apiClient } from './client';
 import type {
   DashboardSummary, AnalyticsZone, AnalyticsType, AnalyticsCollection, AnalyticsRepeatOffender,
-  Vehicle, Owner, Driver, License, TrafficZone, Road, Camera, VehicleEvent,
-  Violation, Fine, Payment, Appeal, Officer, Evidence, SearchResult, SystemHealth, TokenResponse, User
+  ViolationTrend, Vehicle, Owner, Driver, License, TrafficZone, Road, Camera, VehicleEvent,
+  Violation, Fine, Payment, Appeal, Officer, Evidence, SearchResult, SystemHealth, SystemDependenciesHealth, TokenResponse, User
 } from '../types';
 
 export const authApi = {
@@ -24,6 +24,10 @@ export const authApi = {
 export const analyticsApi = {
   getSummary: async (): Promise<DashboardSummary> => {
     const res = await apiClient.get<DashboardSummary>('/analytics/dashboard-summary');
+    return res.data;
+  },
+  getViolationTrends: async (params?: { days?: number }): Promise<ViolationTrend[]> => {
+    const res = await apiClient.get<ViolationTrend[]>('/analytics/violation-trends', { params });
     return res.data;
   },
   getViolationsByZone: async (): Promise<AnalyticsZone[]> => {
@@ -265,6 +269,10 @@ export const healthApi = {
   },
   getEs: async (): Promise<SystemHealth> => {
     const res = await apiClient.get<SystemHealth>('/health/elasticsearch');
+    return res.data;
+  },
+  getDependencies: async (): Promise<SystemDependenciesHealth> => {
+    const res = await apiClient.get<SystemDependenciesHealth>('/health/dependencies');
     return res.data;
   }
 };

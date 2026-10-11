@@ -1,12 +1,14 @@
 import React from 'react';
 import {
   LayoutDashboard, Car, Users, UserCheck, Camera, Radio, AlertTriangle,
-  Receipt, CreditCard, ShieldAlert, BadgeCheck, Search, BarChart3, FileSpreadsheet
+  Receipt, CreditCard, ShieldAlert, BadgeCheck, Search, BarChart3, FileSpreadsheet, X
 } from 'lucide-react';
 
 interface SidebarProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
+  mobileOpen?: boolean;
+  onClose?: () => void;
 }
 
 export const navItems = [
@@ -26,34 +28,67 @@ export const navItems = [
   { id: 'reports', label: 'Reports', icon: FileSpreadsheet },
 ];
 
-export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, mobileOpen, onClose }) => {
   return (
-    <aside className="sidebar">
-      <div className="sidebar-header">
-        <div className="brand-icon">
-          <span>ST</span>
-        </div>
-        <div className="brand-text">
-          <h1>STVAMS</h1>
-          <p>Traffic Control</p>
-        </div>
-      </div>
-      <nav className="sidebar-nav">
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = activeTab === item.id;
-          return (
+    <>
+      {mobileOpen && (
+        <div
+          onClick={onClose}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.65)',
+            zIndex: 45,
+            backdropFilter: 'blur(4px)'
+          }}
+        />
+      )}
+      <aside className={`sidebar ${mobileOpen ? 'mobile-open' : ''}`}>
+        <div className="sidebar-header" style={{ justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div className="brand-icon">
+              <span>ST</span>
+            </div>
+            <div className="brand-text">
+              <h1>STVAMS</h1>
+              <p>Traffic Control</p>
+            </div>
+          </div>
+          {mobileOpen && (
             <button
-              key={item.id}
-              className={`nav-item ${isActive ? 'active' : ''}`}
-              onClick={() => setActiveTab(item.id)}
+              onClick={onClose}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-secondary)',
+                cursor: 'pointer',
+                padding: '4px'
+              }}
             >
-              <Icon size={18} />
-              <span>{item.label}</span>
+              <X size={20} />
             </button>
-          );
-        })}
-      </nav>
-    </aside>
+          )}
+        </div>
+        <nav className="sidebar-nav">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                className={`nav-item ${isActive ? 'active' : ''}`}
+                onClick={() => {
+                  setActiveTab(item.id);
+                  onClose?.();
+                }}
+              >
+                <Icon size={18} />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+      </aside>
+    </>
   );
 };
