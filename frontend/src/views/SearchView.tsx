@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { searchApi } from '../api/services';
 import type { SearchResult } from '../types';
 import { Search as SearchIcon } from 'lucide-react';
+import { HeroBand } from '../components/HeroBand';
 
 export const SearchView: React.FC = () => {
   const [q, setQ] = useState('');
@@ -33,6 +34,12 @@ export const SearchView: React.FC = () => {
 
   return (
     <div>
+      <HeroBand
+        badge="Catalogue Query Engine"
+        title="Global Multidimensional Search"
+        subtitle="Full-Text Plate Matching, Spatial Velocity Filtering, and Cross-Module Relational Retrieval."
+      />
+
       <div className="table-card" style={{ marginBottom: '1.5rem', padding: '1.25rem' }}>
         <h3 className="chart-title" style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <SearchIcon size={18} color="var(--accent-cyan)" /> Elasticsearch & RDBMS Sub-second Multidimensional Search

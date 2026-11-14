@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { InteractiveMap } from '../components/InteractiveMap';
 
-const CHART_COLORS = ['#00f2fe', '#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#f43f5e'];
+const CHART_COLORS = ['#0057d2', '#0040b0', '#6bc0ff', '#223548', '#107e3e', '#b26b00', '#c92a2a'];
 
 interface DashboardViewProps {
   onNavigate?: (tab: string) => void;
@@ -312,9 +312,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     const collected = primaryKpis.collectedAmount;
     const pending = primaryKpis.pendingFinesAmount;
     return [
-      { metric: 'Levied Fines', amount: levied, fill: '#3b82f6' },
-      { metric: 'Collected Revenue', amount: collected, fill: '#10b981' },
-      { metric: 'Pending Outstanding', amount: pending, fill: '#f59e0b' }
+      { metric: 'Levied Fines', amount: levied, fill: '#0040b0' },
+      { metric: 'Collected Revenue', amount: collected, fill: '#107e3e' },
+      { metric: 'Pending Outstanding', amount: pending, fill: '#b26b00' }
     ];
   }, [primaryKpis]);
 
@@ -356,6 +356,98 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
 
   return (
     <div className="dashboard-container">
+      {/* =====================================================================
+          ATMOSPHERIC NAVY HERO (Signature Feature of the Home Page)
+          Anchored on {colors.navy} (#022879) gradient behind product lockup
+          Display headline: {typography.display} (57px 700)
+          Lead paragraph: {typography.lead} (28px 400)
+          Floating UI cards carrying soft drop shadows inside the lockup
+          ===================================================================== */}
+      <div className="navy-hero">
+        <div className="navy-hero-inner">
+          <div className="navy-hero-content">
+            <span
+              style={{
+                display: 'inline-block',
+                padding: '4px 10px',
+                borderRadius: 'var(--rounded-sm)',
+                backgroundColor: 'rgba(255, 255, 255, 0.16)',
+                color: '#ffffff',
+                fontSize: '12px',
+                fontWeight: 600,
+                textTransform: 'uppercase',
+                letterSpacing: '0.06em',
+                marginBottom: '14px'
+              }}
+            >
+              Enterprise Traffic Operations
+            </span>
+            <h1 className="type-display" style={{ color: '#ffffff', marginBottom: '14px' }}>
+              STVAMS Command Center
+            </h1>
+            <p className="type-lead" style={{ color: '#e2e8f0', marginBottom: '24px' }}>
+              High-throughput optical ANPR surveillance, automated infraction citations, and real-time municipal fine enforcement across smart city corridors.
+            </p>
+            <div className="navy-hero-actions">
+              <button
+                className="btn-primary"
+                onClick={() => onNavigate?.('violations')}
+              >
+                <AlertTriangle size={18} /> View Active Violations
+              </button>
+              <button
+                className="btn-outline"
+                onClick={() => onNavigate?.('analytics')}
+              >
+                <TrendingUp size={18} /> Intelligence Hub
+              </button>
+            </div>
+          </div>
+
+          {/* Workflow Lockup with Floating UI Cards (Level 4 Depth) */}
+          <div className="hero-diagram-lockup">
+            <div className="hero-floating-card">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <CameraIcon size={20} color="var(--colors-primary)" />
+                <div>
+                  <div className="card-title">ANPR Fleet Surveillance</div>
+                  <div style={{ fontSize: '12px', color: 'var(--colors-ink-meta)' }}>
+                    {primaryKpis.camerasOnline} of {primaryKpis.camerasTotal} Nodes Synchronized
+                  </div>
+                </div>
+              </div>
+              <span className="card-val">{primaryKpis.camerasAvailPct}%</span>
+            </div>
+
+            <div className="hero-floating-card" style={{ margin: '12px 0' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <Zap size={20} color="var(--colors-status-warning)" />
+                <div>
+                  <div className="card-title">AI Optical Precision</div>
+                  <div style={{ fontSize: '12px', color: 'var(--colors-ink-meta)' }}>
+                    License Plate Character Extraction
+                  </div>
+                </div>
+              </div>
+              <span className="card-val">{cameraStats.avgConfidence || '99.2'}%</span>
+            </div>
+
+            <div className="hero-floating-card">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <Award size={20} color="var(--colors-status-success)" />
+                <div>
+                  <div className="card-title">Municipal Fine Settlements</div>
+                  <div style={{ fontSize: '12px', color: 'var(--colors-ink-meta)' }}>
+                    Reconciled Treasury Receipts
+                  </div>
+                </div>
+              </div>
+              <span className="card-val">₹{primaryKpis.collectedAmount.toLocaleString()}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* 1. OPERATIONAL ALERT BANNER (If services degraded or cameras needing attention) */}
       {hasSystemWarning && !dismissWarning && (
         <div className="operational-warning-banner" role="alert">
@@ -380,72 +472,134 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
         </div>
       )}
 
-      {/* 2. TOP TOOLBAR & CONTROLS */}
-      <div className="filter-bar">
-        <div className="filter-group">
-          {/* Date Range Filter */}
-          <div className="filter-item">
-            <label htmlFor="filter-date-range"><Clock size={14} /> Period:</label>
+      {/* 2. TELEMETRY FILTERING & SLICING BAND (Broad Flat Band in {colors.chrome}) */}
+      <div className="filter-band">
+        <div className="filter-band-header">
+          <div className="filter-band-title">
+            <Filter size={16} color="var(--colors-primary)" />
+            <span>Operational Telemetry & Slicing Controls</span>
+          </div>
+
+          <div className="filter-band-actions">
+            {/* Active filters reset button */}
+            {(dateRange !== 'TODAY' || selectedZoneCode || selectedCategory || selectedCameraStatus) && (
+              <button
+                className="btn-outline"
+                style={{ height: '36px', minHeight: '36px', padding: '0 12px', fontSize: '12px' }}
+                onClick={() => {
+                  setDateRange('TODAY');
+                  setSelectedZoneCode('');
+                  setSelectedCategory('');
+                  setSelectedCameraStatus('');
+                  setCustomStartDate('');
+                  setCustomEndDate('');
+                }}
+              >
+                Reset Filters
+              </button>
+            )}
+
+            {/* Live Telemetry Pulse Toggle */}
+            <button
+              className={`live-toggle-btn ${autoRefresh ? 'active' : ''}`}
+              onClick={() => setAutoRefresh(!autoRefresh)}
+              title={autoRefresh ? 'Live Auto Refresh Active (15s)' : 'Auto Refresh Paused'}
+              aria-label="Toggle Live Telemetry Refresh"
+            >
+              {autoRefresh && <span className="live-pulse-dot" />}
+              <Radio size={14} color={autoRefresh ? 'var(--colors-status-success)' : 'var(--colors-ink-meta)'} />
+              <span>{autoRefresh ? 'Live (15s)' : 'Paused'}</span>
+            </button>
+
+            {/* Refresh Button */}
+            <button
+              className="btn-secondary"
+              style={{ height: '36px', minHeight: '36px', padding: '0 14px', fontSize: '13px' }}
+              onClick={() => loadDashboardData(true)}
+              disabled={refreshing}
+              aria-label="Manually refresh dashboard data"
+            >
+              <RefreshCw size={13} className={refreshing ? 'spin' : ''} />
+              <span>Refresh</span>
+            </button>
+          </div>
+        </div>
+
+        {/* 4 Clean Filter Fields in a Structured Enterprise Grid */}
+        <div className="filter-fields-grid">
+          {/* 1. Time Period */}
+          <div className="filter-field">
+            <label className="filter-label" htmlFor="filter-date-range">
+              <Clock size={13} />
+              <span>Analysis Period</span>
+            </label>
             <select
               id="filter-date-range"
+              className="filter-select"
               value={dateRange}
               onChange={(e) => setDateRange(e.target.value)}
               aria-label="Filter by Date Range"
             >
-              <option value="TODAY">Today</option>
-              <option value="7D">Last 7 Days</option>
-              <option value="30D">Last 30 Days</option>
-              <option value="CUSTOM">Custom Range</option>
-              <option value="ALL">All Records</option>
+              <option value="TODAY">Today (Since Midnight)</option>
+              <option value="7D">Past 7 Days</option>
+              <option value="30D">Past 30 Days</option>
+              <option value="CUSTOM">Custom Range...</option>
+              <option value="ALL">All Recorded History</option>
             </select>
+
+            {dateRange === 'CUSTOM' && (
+              <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+                <input
+                  type="date"
+                  className="filter-select"
+                  style={{ height: '34px', fontSize: '12px' }}
+                  value={customStartDate}
+                  onChange={(e) => setCustomStartDate(e.target.value)}
+                  title="Start Date"
+                />
+                <input
+                  type="date"
+                  className="filter-select"
+                  style={{ height: '34px', fontSize: '12px' }}
+                  value={customEndDate}
+                  onChange={(e) => setCustomEndDate(e.target.value)}
+                  title="End Date"
+                />
+              </div>
+            )}
           </div>
 
-          {/* Custom Date Pickers */}
-          {dateRange === 'CUSTOM' && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <input
-                type="date"
-                value={customStartDate}
-                onChange={(e) => setCustomStartDate(e.target.value)}
-                className="search-input"
-                style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', width: '130px' }}
-                title="Start Date"
-              />
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>to</span>
-              <input
-                type="date"
-                value={customEndDate}
-                onChange={(e) => setCustomEndDate(e.target.value)}
-                className="search-input"
-                style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', width: '130px' }}
-                title="End Date"
-              />
-            </div>
-          )}
-
-          {/* Traffic Zone Filter */}
-          <div className="filter-item">
-            <label htmlFor="filter-zone"><MapPin size={14} /> Zone:</label>
+          {/* 2. Traffic Zone */}
+          <div className="filter-field">
+            <label className="filter-label" htmlFor="filter-zone">
+              <MapPin size={13} />
+              <span>Traffic Zone</span>
+            </label>
             <select
               id="filter-zone"
+              className="filter-select"
               value={selectedZoneCode}
               onChange={(e) => setSelectedZoneCode(e.target.value)}
               aria-label="Filter by Traffic Zone"
             >
-              <option value="">All Zones ({allZones.length})</option>
+              <option value="">All Municipal Zones ({allZones.length})</option>
               {allZones.map((z) => (
                 <option key={z.zone_id} value={z.zone_code}>
-                  {z.zone_code} - {z.zone_name}
+                  {z.zone_code} — {z.zone_name}
                 </option>
               ))}
             </select>
           </div>
 
-          {/* Violation Category Filter */}
-          <div className="filter-item">
-            <label htmlFor="filter-category"><Filter size={14} /> Category:</label>
+          {/* 3. Offense Category */}
+          <div className="filter-field">
+            <label className="filter-label" htmlFor="filter-category">
+              <Filter size={13} />
+              <span>Violation Category</span>
+            </label>
             <select
               id="filter-category"
+              className="filter-select"
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
               aria-label="Filter by Violation Category"
@@ -457,44 +611,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
             </select>
           </div>
 
-          {/* Camera Status Filter */}
-          <div className="filter-item">
-            <label htmlFor="filter-camera-status"><Video size={14} /> Camera Fleet:</label>
+          {/* 4. Camera Fleet Node */}
+          <div className="filter-field">
+            <label className="filter-label" htmlFor="filter-camera-status">
+              <Video size={13} />
+              <span>Camera Fleet Status</span>
+            </label>
             <select
               id="filter-camera-status"
+              className="filter-select"
               value={selectedCameraStatus}
               onChange={(e) => setSelectedCameraStatus(e.target.value)}
               aria-label="Filter by Camera Fleet Status"
             >
-              <option value="">All Statuses ({allCameras.length})</option>
-              <option value="ACTIVE">Online / Active</option>
-              <option value="MAINTENANCE">In Maintenance</option>
-              <option value="OFFLINE">Offline / Warnings</option>
+              <option value="">All Hardware Statuses ({allCameras.length})</option>
+              <option value="ACTIVE">Online / Active Only</option>
+              <option value="MAINTENANCE">In Scheduled Maintenance</option>
+              <option value="OFFLINE">Offline / Warning Nodes</option>
             </select>
           </div>
-        </div>
-
-        {/* Filter Toolbar Controls */}
-        <div className="filter-controls">
-          <button
-            className={`btn-icon ${autoRefresh ? 'active-pulse' : ''}`}
-            onClick={() => setAutoRefresh(!autoRefresh)}
-            title={autoRefresh ? 'Live Auto Refresh Active (15s)' : 'Auto Refresh Paused'}
-            aria-label="Toggle Live Telemetry Refresh"
-          >
-            <Radio size={15} color={autoRefresh ? '#10b981' : '#9ca3af'} />
-            <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{autoRefresh ? 'LIVE (15s)' : 'PAUSED'}</span>
-          </button>
-
-          <button
-            className="btn btn-secondary btn-sm"
-            onClick={() => loadDashboardData(true)}
-            disabled={refreshing}
-            aria-label="Manually refresh dashboard data"
-          >
-            <RefreshCw size={13} className={refreshing ? 'spin' : ''} />
-            <span>Refresh</span>
-          </button>
         </div>
       </div>
 

@@ -395,4 +395,55 @@ class DashboardSummary(BaseModel):
     violations_yesterday: Optional[int] = 0
     pending_fines_amount: Optional[float] = 0.0
 
+# Radar & ANPR Schemas
+class RadarEventInput(BaseModel):
+    camera_id: int
+    license_plate: str
+    observed_speed: float
+    speed_limit: Optional[float] = None
+    delta_meters: Optional[float] = 15.0
+    delta_time_sec: Optional[float] = None
+    fps: Optional[float] = 30.0
+    ai_confidence: Optional[float] = 95.0
+    image_snapshot_b64: Optional[str] = None
+    bounding_box: Optional[dict] = None
+
+class RadarCitationResponse(BaseModel):
+    is_violation: bool
+    event_id: int
+    observed_speed: float
+    speed_limit: float
+    speed_delta: float
+    license_plate: str
+    vehicle_id: Optional[int] = None
+    vehicle_make: Optional[str] = None
+    vehicle_model: Optional[str] = None
+    owner_name: Optional[str] = None
+    owner_phone: Optional[str] = None
+    violation_id: Optional[int] = None
+    fine_id: Optional[int] = None
+    fine_amount: Optional[float] = None
+    demerit_points: Optional[int] = 0
+    camera_code: str
+    road_name: str
+    zone_name: str
+    math_breakdown: dict
+    timestamp: datetime
+    evidence_id: Optional[str] = None
+
+class FrameOCRInput(BaseModel):
+    image_b64: str  # Base64 encoded frame or ROI
+    camera_id: Optional[int] = None
+
+class FrameOCRResponse(BaseModel):
+    detected: bool
+    plate_text: Optional[str] = None
+    confidence: float
+    normalized_plate: Optional[str] = None
+    is_registered: bool
+    vehicle_info: Optional[dict] = None
+    preprocessed_b64: Optional[str] = None
+    processing_time_ms: float
+
+
 

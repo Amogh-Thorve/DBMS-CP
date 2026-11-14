@@ -58,11 +58,9 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
     if (SEGMENT_COORDINATES[cam.segment_id]) {
       return SEGMENT_COORDINATES[cam.segment_id];
     }
-    const code = cam.camera_code.toUpperCase();
-    if (code.includes('MUM')) return [18.9438 + (idx * 0.02) % 0.1, 72.8232 + (idx * 0.015) % 0.08];
-    if (code.includes('DEL')) return [28.5672 + (idx * 0.02) % 0.1, 77.2100 + (idx * 0.015) % 0.08];
-    if (code.includes('BLR')) return [12.9172 + (idx * 0.02) % 0.1, 77.6228 + (idx * 0.015) % 0.08];
-    return [center[0] + (idx * 0.01 - 0.03), center[1] + (idx * 0.01 - 0.03)];
+    const baseLat = 18.9500 + (idx * 0.015);
+    const baseLng = 72.8300 + (idx * 0.012);
+    return [baseLat, baseLng];
   };
 
   useEffect(() => {
@@ -85,7 +83,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
     // Custom Zoom Control at Top-Left
     L.control.zoom({ position: 'topleft' }).addTo(map);
 
-    // Standard OpenStreetMap Tile Layer
+    // Standard OpenStreetMap Tile Layer (Clean natural rendering)
     const tileLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
@@ -109,81 +107,72 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
 
         allLatLngs.push([lat, lng]);
 
-        let color = '#3b82f6'; // MEDIUM
-        if (riskLevel === 'CRITICAL') color = '#f43f5e';
-        else if (riskLevel === 'HIGH') color = '#f59e0b';
-        else if (riskLevel === 'LOW') color = '#10b981';
+        let color = '#0057d2'; // SAP Blue / Medium
+        if (riskLevel === 'CRITICAL') color = '#c92a2a'; // Danger
+        else if (riskLevel === 'HIGH') color = '#b26b00'; // Warning
+        else if (riskLevel === 'LOW') color = '#107e3e'; // Success
 
         const circle = L.circle([lat, lng], {
           color,
           fillColor: color,
-          fillOpacity: 0.12,
-          radius: meta?.radius || 1400,
-          weight: 1.5
-        });
+          fillOpacity: 0.14,
+          weight: 2,
+          radius: meta?.radius || 1200
+        }).addTo(zonesGroup);
 
-        circle.bindTooltip(
-          `<div style="font-family:system-ui; font-size:0.75rem; font-weight:600; color:#fff;">
-            Zone ${z.zone_code}: ${z.zone_name}
-            <div style="font-size:0.7rem; color:${color}; margin-top:2px;">Risk Level: ${riskLevel}</div>
-           </div>`,
-          { direction: 'top', className: 'map-custom-tooltip' }
-        );
-
-        circle.addTo(zonesGroup);
+        circle.bindTooltip(`
+          <div style="font-family:'Source Sans 3',Inter,sans-serif; font-size:12px; color:#223548;">
+            <strong style="color:#000000;">Zone: ${z.zone_name}</strong><br/>
+            Code: <b>${z.zone_code}</b> | Risk: <b style="color:${color}">${riskLevel}</b>
+          </div>
+        `, { sticky: true, className: 'map-custom-tooltip' });
       });
     }
 
-    // 2. Render Camera Nodes
-    const cameraCoordsMap: Record<number, [number, number]> = {};
+    // 2. Render Cameras
     if (showCameras) {
       cameras.forEach((cam, idx) => {
         const [lat, lng] = getCameraLatLng(cam, idx);
-        cameraCoordsMap[cam.camera_id] = [lat, lng];
         allLatLngs.push([lat, lng]);
 
-        const isActive = cam.status === 'ACTIVE';
+        const isOnline = cam.status === 'ONLINE' || cam.status === 'ACTIVE';
         const isMaint = cam.status === 'MAINTENANCE';
-        const statusColor = isActive ? '#00f2fe' : isMaint ? '#f59e0b' : '#f43f5e';
+        const badgeColor = isOnline ? '#107e3e' : isMaint ? '#b26b00' : '#c92a2a';
 
         const customIcon = L.divIcon({
-          className: 'leaflet-camera-marker-wrapper',
+          className: 'custom-map-node-wrapper',
           html: `
-            <div class="custom-map-node ${isActive ? 'online' : 'offline'}" style="border-color:${statusColor}; color:${statusColor};" title="${cam.camera_code}">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/>
-                <circle cx="12" cy="13" r="3"/>
-              </svg>
-              <span class="marker-code">${cam.camera_code.replace('CAM-', '')}</span>
+            <div class="custom-map-node ${isOnline ? 'online' : 'offline'}" style="border-color:${badgeColor}; font-family:'Source Sans 3',Inter,sans-serif;">
+              <span style="width:7px; height:7px; border-radius:50%; background:${badgeColor}; display:inline-block;"></span>
+              <span class="marker-code" style="color:#223548;">${cam.camera_code}</span>
             </div>
           `,
-          iconSize: [68, 22],
-          iconAnchor: [34, 11]
+          iconSize: [85, 26],
+          iconAnchor: [42, 13]
         });
 
         const marker = L.marker([lat, lng], { icon: customIcon }).addTo(camerasGroup);
 
         const popupHtml = `
-          <div style="font-family:system-ui,sans-serif; min-width:190px; color:#f3f4f6;">
-            <div style="font-weight:700; font-size:0.85rem; color:#00f2fe; margin-bottom:4px; display:flex; justify-content:space-between; align-items:center;">
-              <span>${cam.camera_code}</span>
-              <span style="font-size:0.65rem; padding:1px 5px; border-radius:4px; background:${statusColor}22; color:${statusColor}; border:1px solid ${statusColor}55;">
+          <div style="font-family:'Source Sans 3',Inter,sans-serif; min-width:210px; color:#223548; padding:4px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; border-bottom:1px solid #dbe2e8; padding-bottom:4px;">
+              <strong style="color:#000000; font-size:14px;">${cam.camera_code}</strong>
+              <span style="font-size:11px; font-weight:700; color:${badgeColor}; text-transform:uppercase;">
                 ${cam.status}
               </span>
             </div>
-            <div style="font-size:0.75rem; color:#9ca3af; margin-bottom:2px;">Type: <strong style="color:#fff">${cam.camera_type}</strong></div>
-            <div style="font-size:0.75rem; color:#9ca3af; margin-bottom:2px;">Orientation: <strong style="color:#fff">${cam.direction || 'NORTHBOUND'}</strong></div>
-            <div style="font-size:0.75rem; color:#9ca3af; margin-bottom:2px;">Segment ID: <strong style="color:#fff">#${cam.segment_id}</strong></div>
-            <div style="font-size:0.75rem; color:#9ca3af; margin-bottom:6px;">IP Address: <code style="color:#00f2fe">${cam.ip_address || '192.168.1.10'}</code></div>
-            <button id="cam-btn-${cam.camera_id}" style="width:100%; padding:4px 8px; font-size:0.72rem; font-weight:600; background:#00f2fe; color:#000; border:none; border-radius:4px; cursor:pointer;">
-              View Camera Record
+            <div style="font-size:12px; margin-bottom:3px;">Type: <strong style="color:#000;">${cam.camera_type || 'ANPR Ultra 4K'}</strong></div>
+            <div style="font-size:12px; margin-bottom:3px;">Segment: <strong style="color:#0057d2;">#${cam.segment_id}</strong></div>
+            <div style="font-size:12px; margin-bottom:8px;">Orientation: ${cam.direction || 'BOTHWAYS'}</div>
+            <button id="cam-inspect-${cam.camera_id}" style="width:100%; height:32px; background:#0057d2; color:#fff; border:none; border-radius:8px; font-weight:600; font-size:12px; cursor:pointer;">
+              Inspect Telemetry
             </button>
           </div>
         `;
 
         marker.bindPopup(popupHtml, { className: 'custom-map-popup' });
         marker.on('popupopen', () => {
-          const btn = document.getElementById(`cam-btn-${cam.camera_id}`);
+          const btn = document.getElementById(`cam-inspect-${cam.camera_id}`);
           if (btn) {
             btn.onclick = () => onSelectCamera?.(cam);
           }
@@ -191,25 +180,23 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
       });
     }
 
-    // 3. Render Violation Incident Hotspots
-    if (showViolations && violations.length > 0) {
-      violations.forEach((v, vIdx) => {
-        let baseCoords = cameraCoordsMap[v.camera_id];
-        if (!baseCoords) {
+    // 3. Render Violations
+    if (showViolations) {
+      violations.slice(0, 30).forEach((v, vIdx) => {
+        let baseCoords: [number, number] = [18.9438, 72.8232];
+        if (v.camera_id) {
           const matchedCam = cameras.find((c) => c.camera_id === v.camera_id);
           if (matchedCam) baseCoords = getCameraLatLng(matchedCam, 0);
-          else baseCoords = [18.9438, 72.8232];
         }
 
-        // Slight micro-offset for incident markers to prevent exact visual overlap
-        const jitterLat = baseCoords[0] + (vIdx * 0.003 - 0.006);
-        const jitterLng = baseCoords[1] + (vIdx * 0.003 - 0.006);
+        const jitterLat = baseCoords[0] + (vIdx * 0.0025 - 0.005);
+        const jitterLng = baseCoords[1] + (vIdx * 0.0025 - 0.005);
 
         const incidentIcon = L.divIcon({
           className: 'leaflet-incident-marker-wrapper',
           html: `
-            <div style="width:20px; height:20px; border-radius:50%; background:rgba(244,63,94,0.25); border:2px solid #f43f5e; display:flex; align-items:center; justify-content:center; box-shadow:0 0 10px rgba(244,63,94,0.6);" title="Violation #${v.violation_id}">
-              <div style="width:8px; height:8px; border-radius:50%; background:#f43f5e;"></div>
+            <div style="width:20px; height:20px; border-radius:50%; background:rgba(201,42,42,0.18); border:2px solid #c92a2a; display:flex; align-items:center; justify-content:center;" title="Violation #${v.violation_id}">
+              <div style="width:8px; height:8px; border-radius:50%; background:#c92a2a;"></div>
             </div>
           `,
           iconSize: [20, 20],
@@ -219,19 +206,19 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
         const incidentMarker = L.marker([jitterLat, jitterLng], { icon: incidentIcon }).addTo(violationsGroup);
 
         const vPopup = `
-          <div style="font-family:system-ui,sans-serif; min-width:180px; color:#f3f4f6;">
-            <div style="font-weight:700; font-size:0.85rem; color:#f43f5e; margin-bottom:4px; display:flex; justify-content:space-between;">
+          <div style="font-family:'Source Sans 3',Inter,sans-serif; min-width:190px; color:#223548; padding:4px;">
+            <div style="font-weight:700; font-size:14px; color:#c92a2a; margin-bottom:4px; display:flex; justify-content:space-between;">
               <span>Violation #${v.violation_id}</span>
-              <span style="font-size:0.65rem; padding:1px 5px; border-radius:4px; background:#f43f5e22; color:#f43f5e; border:1px solid #f43f5e55;">
+              <span style="font-size:11px; padding:2px 6px; border-radius:8px; background:#fce8e6; color:#c92a2a;">
                 ${v.status}
               </span>
             </div>
-            <div style="font-size:0.75rem; color:#9ca3af; margin-bottom:2px;">Reg No: <strong style="color:#fff">${v.vehicle_reg_no || `Vehicle #${v.vehicle_id}`}</strong></div>
-            <div style="font-size:0.75rem; color:#9ca3af; margin-bottom:2px;">Camera: <strong style="color:#00f2fe">${v.camera_code || `Cam-${v.camera_id}`}</strong></div>
-            <div style="font-size:0.75rem; color:#9ca3af; margin-bottom:2px;">Fine: <strong style="color:#10b981">₹${v.fine_amount ? v.fine_amount.toLocaleString() : '1,500'}</strong></div>
-            <div style="font-size:0.72rem; color:#9ca3af; margin-bottom:6px;">Time: ${new Date(v.violation_dt).toLocaleString()}</div>
-            <button id="vio-btn-${v.violation_id}" style="width:100%; padding:4px 8px; font-size:0.72rem; font-weight:600; background:#f43f5e; color:#fff; border:none; border-radius:4px; cursor:pointer;">
-              View Violation Details
+            <div style="font-size:12px; margin-bottom:2px;">Reg No: <strong style="color:#000;">${v.vehicle_reg_no || `Vehicle #${v.vehicle_id}`}</strong></div>
+            <div style="font-size:12px; margin-bottom:2px;">Camera: <strong style="color:#0057d2;">${v.camera_code || `Cam-${v.camera_id}`}</strong></div>
+            <div style="font-size:12px; margin-bottom:2px;">Fine: <strong style="color:#107e3e;">₹${v.fine_amount ? v.fine_amount.toLocaleString() : '1,500'}</strong></div>
+            <div style="font-size:11px; color:#475e75; margin-bottom:8px;">Time: ${new Date(v.violation_dt).toLocaleString()}</div>
+            <button id="vio-btn-${v.violation_id}" style="width:100%; height:32px; background:#c92a2a; color:#fff; border:none; border-radius:8px; font-weight:600; font-size:12px; cursor:pointer;">
+              View Details
             </button>
           </div>
         `;
@@ -270,7 +257,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   };
 
   return (
-    <div style={{ position: 'relative', width: '100%', height, borderRadius: '10px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)' }}>
+    <div style={{ position: 'relative', width: '100%', height, borderRadius: 'var(--rounded-lg)', overflow: 'hidden', border: '1px solid var(--colors-hairline-subtle)', backgroundColor: 'var(--colors-chrome)' }}>
       {/* Top Floating Controls Bar */}
       <div style={{
         position: 'absolute',
@@ -278,43 +265,34 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
         right: 10,
         zIndex: 1000,
         display: 'flex',
-        gap: '0.4rem',
-        background: 'rgba(15, 23, 42, 0.88)',
-        backdropFilter: 'blur(8px)',
-        padding: '0.35rem 0.5rem',
-        borderRadius: '8px',
-        border: '1px solid rgba(255,255,255,0.12)',
-        fontSize: '0.72rem'
+        gap: '4px',
+        backgroundColor: 'rgba(255, 255, 255, 0.94)',
+        backdropFilter: 'blur(4px)',
+        padding: '4px 6px',
+        borderRadius: 'var(--rounded-md)',
+        border: '1px solid var(--colors-hairline-subtle)',
+        boxShadow: '0 2px 6px rgba(34, 53, 72, 0.1)'
       }}>
         {/* City Focus Buttons */}
-        <button
-          className={`btn-tag ${activeCity === 'MUM' ? 'active' : ''}`}
-          onClick={() => focusCity('MUM')}
-          style={{ padding: '2px 7px', fontSize: '0.7rem', borderRadius: '4px', border: 'none', cursor: 'pointer', background: activeCity === 'MUM' ? '#00f2fe' : 'rgba(255,255,255,0.08)', color: activeCity === 'MUM' ? '#000' : '#fff', fontWeight: 600 }}
-        >
-          Mumbai
-        </button>
-        <button
-          className={`btn-tag ${activeCity === 'DEL' ? 'active' : ''}`}
-          onClick={() => focusCity('DEL')}
-          style={{ padding: '2px 7px', fontSize: '0.7rem', borderRadius: '4px', border: 'none', cursor: 'pointer', background: activeCity === 'DEL' ? '#00f2fe' : 'rgba(255,255,255,0.08)', color: activeCity === 'DEL' ? '#000' : '#fff', fontWeight: 600 }}
-        >
-          Delhi
-        </button>
-        <button
-          className={`btn-tag ${activeCity === 'BLR' ? 'active' : ''}`}
-          onClick={() => focusCity('BLR')}
-          style={{ padding: '2px 7px', fontSize: '0.7rem', borderRadius: '4px', border: 'none', cursor: 'pointer', background: activeCity === 'BLR' ? '#00f2fe' : 'rgba(255,255,255,0.08)', color: activeCity === 'BLR' ? '#000' : '#fff', fontWeight: 600 }}
-        >
-          Bengaluru
-        </button>
-        <button
-          className={`btn-tag ${activeCity === 'ALL' ? 'active' : ''}`}
-          onClick={() => focusCity('ALL')}
-          style={{ padding: '2px 7px', fontSize: '0.7rem', borderRadius: '4px', border: 'none', cursor: 'pointer', background: activeCity === 'ALL' ? '#00f2fe' : 'rgba(255,255,255,0.08)', color: activeCity === 'ALL' ? '#000' : '#fff', fontWeight: 600 }}
-        >
-          Fit All
-        </button>
+        {(['MUM', 'DEL', 'BLR', 'ALL'] as const).map((city) => (
+          <button
+            key={city}
+            onClick={() => focusCity(city)}
+            style={{
+              padding: '4px 9px',
+              fontSize: '12px',
+              fontWeight: 600,
+              borderRadius: 'var(--rounded-sm)',
+              border: 'none',
+              cursor: 'pointer',
+              backgroundColor: activeCity === city ? 'var(--colors-primary)' : 'transparent',
+              color: activeCity === city ? '#ffffff' : 'var(--colors-ink-body)',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            {city === 'MUM' ? 'Mumbai' : city === 'DEL' ? 'Delhi' : city === 'BLR' ? 'Bengaluru' : 'Fit All'}
+          </button>
+        ))}
       </div>
 
       {/* Layer Toggles at Top Left */}
@@ -324,45 +302,47 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
         left: 48,
         zIndex: 1000,
         display: 'flex',
-        gap: '0.5rem',
-        background: 'rgba(15, 23, 42, 0.88)',
-        backdropFilter: 'blur(8px)',
-        padding: '0.35rem 0.6rem',
-        borderRadius: '8px',
-        border: '1px solid rgba(255,255,255,0.12)',
-        fontSize: '0.72rem',
-        color: '#e5e7eb'
+        gap: '12px',
+        backgroundColor: 'rgba(255, 255, 255, 0.94)',
+        backdropFilter: 'blur(4px)',
+        padding: '5px 12px',
+        borderRadius: 'var(--rounded-md)',
+        border: '1px solid var(--colors-hairline-subtle)',
+        fontSize: '12px',
+        color: 'var(--colors-ink-body)',
+        fontWeight: 500,
+        boxShadow: '0 2px 6px rgba(34, 53, 72, 0.1)'
       }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
           <input
             type="checkbox"
             checked={showCameras}
             onChange={(e) => setShowCameras(e.target.checked)}
-            style={{ accentColor: '#00f2fe' }}
+            style={{ accentColor: 'var(--colors-primary)' }}
           />
           <span>Cameras ({cameras.length})</span>
         </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
           <input
             type="checkbox"
             checked={showZones}
             onChange={(e) => setShowZones(e.target.checked)}
-            style={{ accentColor: '#3b82f6' }}
+            style={{ accentColor: 'var(--colors-primary-deep)' }}
           />
           <span>Zones ({zones.length})</span>
         </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
           <input
             type="checkbox"
             checked={showViolations}
             onChange={(e) => setShowViolations(e.target.checked)}
-            style={{ accentColor: '#f43f5e' }}
+            style={{ accentColor: 'var(--colors-status-danger)' }}
           />
           <span>Violations ({violations.length})</span>
         </label>
       </div>
 
-      {/* Map Element */}
+      {/* Map Canvas */}
       <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
 
       {/* Bottom Compact Legend */}
@@ -373,30 +353,32 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
         zIndex: 1000,
         display: 'flex',
         alignItems: 'center',
-        gap: '0.75rem',
-        background: 'rgba(15, 23, 42, 0.90)',
-        backdropFilter: 'blur(8px)',
-        padding: '0.3rem 0.65rem',
-        borderRadius: '6px',
-        border: '1px solid rgba(255,255,255,0.1)',
-        fontSize: '0.68rem',
-        color: '#9ca3af'
+        gap: '12px',
+        backgroundColor: 'rgba(255, 255, 255, 0.94)',
+        backdropFilter: 'blur(4px)',
+        padding: '4px 10px',
+        borderRadius: 'var(--rounded-md)',
+        border: '1px solid var(--colors-hairline-subtle)',
+        fontSize: '11px',
+        color: 'var(--colors-ink-meta)',
+        fontWeight: 500,
+        boxShadow: '0 2px 6px rgba(34, 53, 72, 0.1)'
       }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#00f2fe', display: 'inline-block' }} />
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#107e3e', display: 'inline-block' }} />
           Online Cam
         </span>
         <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#f59e0b', display: 'inline-block' }} />
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#b26b00', display: 'inline-block' }} />
           Maintenance
         </span>
         <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#f43f5e', display: 'inline-block' }} />
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#c92a2a', display: 'inline-block' }} />
           Violation Pin
         </span>
         <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'rgba(244,63,94,0.4)', border: '1px solid #f43f5e', display: 'inline-block' }} />
-          Critical Zone
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'rgba(201,42,42,0.3)', border: '1px solid #c92a2a', display: 'inline-block' }} />
+          High Risk Zone
         </span>
       </div>
     </div>

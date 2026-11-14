@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { appealsApi } from '../api/services';
 import type { Appeal } from '../types';
-import { Check, X, Eye } from 'lucide-react';
+import { Check, X, Eye, ShieldAlert } from 'lucide-react';
+import { HeroBand } from '../components/HeroBand';
 
 export const AppealsView: React.FC = () => {
   const [appeals, setAppeals] = useState<Appeal[]>([]);
@@ -55,6 +56,38 @@ export const AppealsView: React.FC = () => {
 
   return (
     <div>
+      <HeroBand
+        badge="Judicial & Legal"
+        title="Dispute Appeals & Adjudication Tribunal"
+        subtitle="Citizen grievance reviews, photographic evidence dispute resolution, and statutory penalty waiver arbitration."
+      />
+
+      <div className="band-lavender" style={{ marginBottom: 'var(--spacing-giant)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <div style={{
+            width: '40px',
+            height: '40px',
+            borderRadius: 'var(--rounded-md)',
+            backgroundColor: 'var(--colors-canvas)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: 'var(--colors-primary-deep)',
+            border: '1px solid var(--colors-hairline-subtle)'
+          }}>
+            <ShieldAlert size={22} />
+          </div>
+          <div>
+            <h4 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--colors-ink)', marginBottom: '2px' }}>
+              Statutory Tribunal Fast-Track Docket
+            </h4>
+            <p style={{ fontSize: '13px', color: 'var(--colors-ink-body)' }}>
+              Appeals approved by municipal traffic magistrates trigger automatic atomic ledger updates, cancelling corresponding fine challans with zero manual reconciliation.
+            </p>
+          </div>
+        </div>
+      </div>
+
       <div className="table-card">
         <div className="table-toolbar">
           <div style={{ display: 'flex', gap: '0.75rem', flex: 1 }}>

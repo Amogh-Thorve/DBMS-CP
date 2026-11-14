@@ -1,17 +1,29 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { healthApi } from '../api/services';
-import { UserCircle, Menu } from 'lucide-react';
+import { navItems } from './Sidebar';
+import {
+  Search, Shield, Menu,
+  ChevronRight, ArrowRight
+} from 'lucide-react';
 
 interface HeaderProps {
-  activeTabLabel: string;
+  activeTab: string;
+  setActiveTab: (tab: string) => void;
   onToggleMobileMenu?: () => void;
+  onQuickSearchJump?: (tab: string) => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ activeTabLabel, onToggleMobileMenu }) => {
+export const Header: React.FC<HeaderProps> = ({
+  activeTab,
+  setActiveTab,
+  onToggleMobileMenu
+}) => {
   const { user, switchRole } = useAuth();
   const [coreStatus, setCoreStatus] = useState<string>('CHECKING');
   const [dbMode, setDbMode] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [showSearchResults, setShowSearchResults] = useState<boolean>(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -48,73 +60,188 @@ export const Header: React.FC<HeaderProps> = ({ activeTabLabel, onToggleMobileMe
   const isHealthy = coreStatus === 'HEALTHY' && !isDegraded;
   const isOffline = coreStatus === 'OFFLINE';
 
+  const currentNav = navItems.find((item) => item.id === activeTab) || navItems[0];
+  const currentCategory = (currentNav as any).category || 'Operations';
+
+  // Quick catalogue search filter
+  const filteredNavs = searchQuery.trim()
+    ? navItems.filter((i) =>
+        i.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        ((i as any).category && (i as any).category.toLowerCase().includes(searchQuery.toLowerCase()))
+      )
+    : [];
+
   return (
-    <header className="top-header">
-      <div className="header-title" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-        {onToggleMobileMenu && (
-          <button
-            onClick={onToggleMobileMenu}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: 'var(--text-secondary)',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              padding: '4px'
+    <header style={{ width: '100%', position: 'sticky', top: 0, zIndex: 60 }}>
+      {/* =====================================================================
+          STOREY 1: 60px Global Bar in {colors.chrome} (#f5f6f7)
+          ===================================================================== */}
+      <div className="global-nav-bar">
+        {/* Brand Lockup */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          {onToggleMobileMenu && (
+            <button
+              onClick={onToggleMobileMenu}
+              className="btn-outline"
+              style={{
+                minHeight: '36px',
+                height: '36px',
+                padding: '6px 10px',
+                borderRadius: '8px',
+                border: '1px solid var(--colors-hairline-subtle)'
+              }}
+              title="Catalogue Drawer"
+              aria-label="Toggle Catalogue Drawer"
+            >
+              <Menu size={18} color="var(--colors-ink-body)" />
+              <span style={{ fontSize: '13px', display: 'none' }} className="d-md-inline">Catalogue</span>
+            </button>
+          )}
+
+          <div className="global-brand">
+            <div className="sap-brand-badge">
+              <div className="sap-logo-box">
+                SAP
+              </div>
+              <div className="sap-brand-title">
+                <span className="app-name">STVAMS</span>
+                <span className="app-subtitle">Traffic Violation Management</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Global Catalogue Search */}
+        <div className="global-search-container">
+          <Search size={16} className="global-search-icon" />
+          <input
+            type="text"
+            className="global-search-input"
+            placeholder="Search catalogue (Vehicles, Fines, Cameras, Reports)..."
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setShowSearchResults(true);
             }}
-            aria-label="Toggle Navigation Sidebar"
+            onFocus={() => setShowSearchResults(true)}
+            onBlur={() => setTimeout(() => setShowSearchResults(false), 250)}
+          />
+
+          {showSearchResults && filteredNavs.length > 0 && (
+            <div
+              style={{
+                position: 'absolute',
+                top: '42px',
+                left: 0,
+                right: 0,
+                background: 'var(--colors-canvas)',
+                border: '1px solid var(--colors-hairline-subtle)',
+                borderRadius: '8px',
+                boxShadow: '0 8px 24px rgba(34, 53, 72, 0.14)',
+                zIndex: 100,
+                overflow: 'hidden'
+              }}
+            >
+              {filteredNavs.map((nav) => (
+                <div
+                  key={nav.id}
+                  style={{
+                    padding: '8px 14px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    borderBottom: '1px solid var(--colors-hairline-subtle)'
+                  }}
+                  onMouseDown={() => {
+                    setActiveTab(nav.id);
+                    setSearchQuery('');
+                    setShowSearchResults(false);
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <nav.icon size={15} color="var(--colors-primary)" />
+                    <span style={{ fontWeight: 600, color: 'var(--colors-ink)' }}>{nav.label}</span>
+                    <span style={{ fontSize: '11px', color: 'var(--colors-ink-meta)' }}>
+                      {(nav as any).category}
+                    </span>
+                  </div>
+                  <ArrowRight size={14} color="var(--colors-ink-meta)" />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Global Controls: Status, User, Role */}
+        <div className="global-actions">
+          {/* Health Status Affordance */}
+          <div
+            className={`status-badge-sap ${isHealthy ? 'operational' : isDegraded ? 'degraded' : 'offline'}`}
+            title={isDegraded ? 'Core API operational • SQLite Fallback' : 'System Operational'}
           >
-            <Menu size={22} />
-          </button>
-        )}
-        <div>
-          <h2>{activeTabLabel === 'Dashboard' ? 'STVAMS Command Center Dashboard' : activeTabLabel}</h2>
-          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-            Smart Traffic Violation & Vehicle Analytics Management System
-          </span>
+            <span className="status-dot-sap" />
+            <span style={{ fontFamily: 'var(--font-family-mono)', fontSize: '12px' }}>
+              {isOffline ? 'OFFLINE' : isDegraded ? `OK • ${dbMode}` : 'OPERATIONAL'}
+            </span>
+          </div>
+
+          {/* User & Role Affordance */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Shield size={16} color="var(--colors-primary)" />
+            <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--colors-ink)' }}>
+              {user?.username || 'admin'}
+            </span>
+            <select
+              className="user-selector-sap"
+              value={user?.username?.toLowerCase() || 'admin'}
+              onChange={(e) => switchRole(e.target.value)}
+              title="Operational Security Role"
+            >
+              <option value="admin">ADMIN</option>
+              <option value="officer">OFFICER</option>
+              <option value="analyst">ANALYST</option>
+              <option value="operator">OPERATOR</option>
+            </select>
+          </div>
         </div>
       </div>
-      <div className="header-controls">
-        <div
-          className="health-pill"
-          style={{
-            background: isHealthy ? 'rgba(16, 185, 129, 0.1)' : isDegraded ? 'rgba(245, 158, 11, 0.12)' : 'rgba(244, 63, 94, 0.12)',
-            borderColor: isHealthy ? 'rgba(16, 185, 129, 0.3)' : isDegraded ? 'rgba(245, 158, 11, 0.35)' : 'rgba(244, 63, 94, 0.35)',
-            color: isHealthy ? 'var(--accent-emerald)' : isDegraded ? 'var(--accent-amber)' : 'var(--accent-rose)'
-          }}
-          title={isDegraded ? 'Core API healthy, operational database running via SQLite local fallback' : 'All services connected'}
-        >
-          <span
-            className="health-dot"
-            style={{
-              background: isHealthy ? 'var(--accent-emerald)' : isDegraded ? 'var(--accent-amber)' : 'var(--accent-rose)',
-              boxShadow: isHealthy ? '0 0 8px var(--accent-emerald)' : isDegraded ? '0 0 8px var(--accent-amber)' : '0 0 8px var(--accent-rose)'
-            }}
-          />
-          <span>
-            {isOffline ? 'SYSTEM: OFFLINE' : isDegraded ? `API OK • ${dbMode}` : 'SYSTEM: OPERATIONAL'}
+
+      {/* =====================================================================
+          STOREY 2: Product Tab Rail with Breadcrumbs and Tabs
+          ===================================================================== */}
+      <div className="product-tab-rail">
+        {/* Breadcrumb Trail (height 17-24px, {colors.ink-nav}, 15px 400) */}
+        <div className="tab-rail-breadcrumb-row">
+          <span className="breadcrumb-label">
+            <span>Catalogue</span>
+            <ChevronRight size={13} className="breadcrumb-separator" />
+            <span>{currentCategory}</span>
+            <ChevronRight size={13} className="breadcrumb-separator" />
+            <span className="breadcrumb-current">{currentNav.label}</span>
           </span>
         </div>
 
-        <div className="user-badge">
-          <UserCircle size={18} />
-          <span>{user?.username || 'admin'}</span>
-          <span className="role-tag">{user?.role || 'ADMIN'}</span>
+        {/* Row of Product Tabs */}
+        <div className="tab-rail-row">
+          {navItems.map((item) => {
+            const isActive = activeTab === item.id;
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.id}
+                className={isActive ? 'product-tab-active' : 'product-tab'}
+                onClick={() => setActiveTab(item.id)}
+                role="tab"
+                aria-selected={isActive}
+              >
+                <Icon size={16} />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
         </div>
-
-        <select
-          className="search-input"
-          style={{ width: 'auto', padding: '0.3rem 0.6rem', fontSize: '0.78rem' }}
-          value={user?.username?.toLowerCase() || 'admin'}
-          onChange={(e) => switchRole(e.target.value)}
-          title="Switch Active Operational Role"
-        >
-          <option value="admin">Role: ADMIN</option>
-          <option value="officer">Role: OFFICER</option>
-          <option value="analyst">Role: ANALYST</option>
-          <option value="operator">Role: OPERATOR</option>
-        </select>
       </div>
     </header>
   );

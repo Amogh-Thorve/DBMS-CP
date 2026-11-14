@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ownersApi } from '../api/services';
 import type { Owner } from '../types';
 import { Plus, X } from 'lucide-react';
+import { HeroBand } from '../components/HeroBand';
 
 export const OwnersView: React.FC = () => {
   const [owners, setOwners] = useState<Owner[]>([]);
@@ -62,6 +63,17 @@ export const OwnersView: React.FC = () => {
 
   return (
     <div>
+      <HeroBand
+        badge="Citizen Registry"
+        title="Registered Vehicle Owners"
+        subtitle="Identity verification, National ID records, and corporate/individual entity legal relationships."
+        actions={
+          <button className="btn-primary" onClick={() => setShowAddModal(true)}>
+            <Plus size={16} /> Add Legal Owner
+          </button>
+        }
+      />
+
       <div className="table-card">
         <div className="table-toolbar">
           <div style={{ display: 'flex', gap: '0.75rem', flex: 1 }}>

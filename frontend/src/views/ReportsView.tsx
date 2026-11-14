@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { reportsApi } from '../api/services';
 import { FileSpreadsheet, Play, CheckCircle2, Clock, Database, HardDrive } from 'lucide-react';
+import { HeroBand } from '../components/HeroBand';
 
 export const ReportsView: React.FC = () => {
   const [exportStatus, setExportStatus] = useState<{ status: string; file?: string; size_bytes?: number; format?: string } | null>(null);
@@ -38,6 +39,12 @@ export const ReportsView: React.FC = () => {
 
   return (
     <div>
+      <HeroBand
+        badge="Big Data Lake"
+        title="Columnar Exports & Audit Pipelines"
+        subtitle="Batch Parquet Serialization for Distributed Hadoop HDFS Clusters and Regulatory Audit Archives."
+      />
+
       <div className="table-card" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
         <h3 className="chart-title" style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <FileSpreadsheet size={20} color="var(--accent-cyan)" /> Parquet Columnar Export & Big Data Lake Management

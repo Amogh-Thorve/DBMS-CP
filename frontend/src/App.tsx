@@ -6,6 +6,7 @@ import { VehiclesView } from './views/VehiclesView';
 import { OwnersView } from './views/OwnersView';
 import { DriversView } from './views/DriversView';
 import { CamerasView } from './views/CamerasView';
+import { SpeedRadarView } from './views/SpeedRadarView';
 import { VehicleEventsView } from './views/VehicleEventsView';
 import { ViolationsView } from './views/ViolationsView';
 import { FinesView } from './views/FinesView';
@@ -31,6 +32,8 @@ export const AppContent: React.FC = () => {
             return <DriversView />;
           case 'cameras':
             return <CamerasView />;
+          case 'radar':
+            return <SpeedRadarView onNavigate={setActiveTab} />;
           case 'events':
             return <VehicleEventsView />;
           case 'violations':

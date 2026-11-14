@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { officersApi } from '../api/services';
 import type { Officer } from '../types';
 import { Plus, X } from 'lucide-react';
+import { HeroBand } from '../components/HeroBand';
 
 export const OfficersView: React.FC = () => {
   const [officers, setOfficers] = useState<Officer[]>([]);
@@ -54,6 +55,17 @@ export const OfficersView: React.FC = () => {
 
   return (
     <div>
+      <HeroBand
+        badge="Enforcement Workforce"
+        title="Traffic Enforcement Fleet & Officers"
+        subtitle="Patrol unit deployment, operational badge assignments, and municipal jurisdiction coverage."
+        actions={
+          <button className="btn-primary" onClick={() => setShowAddModal(true)}>
+            <Plus size={16} /> Deploy Officer
+          </button>
+        }
+      />
+
       <div className="table-card">
         <div className="table-toolbar">
           <div style={{ display: 'flex', gap: '0.75rem', flex: 1 }}>

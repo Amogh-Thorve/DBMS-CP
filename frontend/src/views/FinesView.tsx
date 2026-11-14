@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { finesApi, paymentsApi } from '../api/services';
 import type { Fine } from '../types';
 import { CreditCard, X, CheckCircle2 } from 'lucide-react';
+import { HeroBand } from '../components/HeroBand';
 
 export const FinesView: React.FC = () => {
   const [fines, setFines] = useState<Fine[]>([]);
@@ -68,6 +69,12 @@ export const FinesView: React.FC = () => {
 
   return (
     <div>
+      <HeroBand
+        badge="Municipal Treasury"
+        title="Challan Invoicing & Penalties"
+        subtitle="ACID Compliant Fine Invoicing, Surcharge Penalties, and Statutory Payment Processing."
+      />
+
       <div className="table-card">
         <div className="table-toolbar">
           <div style={{ display: 'flex', gap: '0.5rem' }}>

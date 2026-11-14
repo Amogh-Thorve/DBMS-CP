@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { eventsApi, evidenceApi } from '../api/services';
 import type { VehicleEvent, Evidence } from '../types';
 import { Eye, X } from 'lucide-react';
+import { HeroBand } from '../components/HeroBand';
 
 export const VehicleEventsView: React.FC = () => {
   const [events, setEvents] = useState<VehicleEvent[]>([]);
@@ -38,6 +39,12 @@ export const VehicleEventsView: React.FC = () => {
 
   return (
     <div>
+      <HeroBand
+        badge="Live Telemetry Ingestion"
+        title="Vehicle Optical Detections & Event Stream"
+        subtitle="Real-time ANPR camera triggers, optical plate verification confidence, and sensor velocity readings."
+      />
+
       <div className="table-card">
         <div className="table-toolbar">
           <div style={{ display: 'flex', gap: '0.75rem', flex: 1 }}>

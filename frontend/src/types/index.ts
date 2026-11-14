@@ -247,3 +247,74 @@ export interface SystemDependenciesHealth {
   parquet: SystemHealth;
   hadoop: SystemHealth;
 }
+
+export interface RadarCamera {
+  camera_id: number;
+  camera_code: string;
+  camera_type: string;
+  status: string;
+  ip_address: string;
+  road_name: string;
+  speed_limit_kmh: number;
+  zone_name: string;
+  zone_code: string;
+  calibrated_distance_meters: number;
+  entry_line_pct: number;
+  exit_line_pct: number;
+}
+
+export interface RadarEventPayload {
+  camera_id: number;
+  license_plate: string;
+  observed_speed: number;
+  speed_limit?: number;
+  delta_meters?: number;
+  delta_time_sec?: number;
+  fps?: number;
+  ai_confidence?: number;
+  image_snapshot_b64?: string;
+  bounding_box?: { x: number; y: number; w: number; h: number };
+}
+
+export interface RadarCitation {
+  is_violation: boolean;
+  event_id: number;
+  observed_speed: number;
+  speed_limit: number;
+  speed_delta: number;
+  license_plate: string;
+  vehicle_id?: number;
+  vehicle_make?: string;
+  vehicle_model?: string;
+  owner_name?: string;
+  owner_phone?: string;
+  violation_id?: number;
+  fine_id?: number;
+  fine_amount?: number;
+  demerit_points?: number;
+  camera_code: string;
+  road_name: string;
+  zone_name: string;
+  math_breakdown: {
+    speed_mps: number;
+    speed_kmh: number;
+    delta_meters: number;
+    delta_time_sec: number;
+    fps: number;
+    formula: string;
+  };
+  timestamp: string;
+  evidence_id?: string;
+}
+
+export interface FrameOCRResult {
+  detected: boolean;
+  plate_text?: string;
+  confidence: number;
+  normalized_plate?: string;
+  is_registered: boolean;
+  vehicle_info?: any;
+  preprocessed_b64?: string;
+  processing_time_ms: number;
+}
+

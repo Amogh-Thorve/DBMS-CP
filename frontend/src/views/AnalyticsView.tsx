@@ -5,8 +5,9 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell
 } from 'recharts';
 import { TrendingUp, Award, ShieldAlert, Zap } from 'lucide-react';
+import { HeroBand } from '../components/HeroBand';
 
-const COLORS = ['#00f2fe', '#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#f43f5e'];
+const COLORS = ['#0057d2', '#0040b0', '#6bc0ff', '#223548', '#107e3e', '#b26b00', '#c92a2a'];
 
 export const AnalyticsView: React.FC = () => {
   const [zones, setZones] = useState<AnalyticsZone[]>([]);
@@ -48,14 +49,20 @@ export const AnalyticsView: React.FC = () => {
 
   return (
     <div>
+      <HeroBand
+        badge="OLAP Intelligence"
+        title="Data Warehouse & Operational Analytics"
+        subtitle="Star Schema Aggregations, Municipal Revenue Realization, and Repeat Infractor Risk Scores."
+      />
+
       {/* Revenue Summary Row */}
-      <div className="grid-cards" style={{ marginBottom: '1.5rem' }}>
+      <div className="grid-cards" style={{ marginBottom: 'var(--spacing-giant)' }}>
         <div className="stat-card">
           <div>
             <div className="stat-label">Total Levied Fines</div>
             <div className="stat-value">₹{(collection?.total_levied || 0).toLocaleString()}</div>
           </div>
-          <div className="stat-icon" style={{ color: '#f43f5e' }}><TrendingUp size={22} /></div>
+          <div className="stat-icon" style={{ color: 'var(--colors-status-danger)' }}><TrendingUp size={22} /></div>
         </div>
 
         <div className="stat-card">
@@ -63,7 +70,7 @@ export const AnalyticsView: React.FC = () => {
             <div className="stat-label">Total Collected Revenue</div>
             <div className="stat-value">₹{(collection?.total_collected || 0).toLocaleString()}</div>
           </div>
-          <div className="stat-icon" style={{ color: '#10b981' }}><Award size={22} /></div>
+          <div className="stat-icon" style={{ color: 'var(--colors-status-success)' }}><Award size={22} /></div>
         </div>
 
         <div className="stat-card">
@@ -71,7 +78,7 @@ export const AnalyticsView: React.FC = () => {
             <div className="stat-label">Overall Collection Rate</div>
             <div className="stat-value">{collection?.collection_rate || '0%'}</div>
           </div>
-          <div className="stat-icon" style={{ color: '#00f2fe' }}><Zap size={22} /></div>
+          <div className="stat-icon" style={{ color: 'var(--colors-primary)' }}><Zap size={22} /></div>
         </div>
       </div>
 
@@ -84,12 +91,12 @@ export const AnalyticsView: React.FC = () => {
           <div style={{ height: 280 }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={zones}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                <XAxis dataKey="zone_code" stroke="#9ca3af" fontSize={11} />
-                <YAxis stroke="#9ca3af" fontSize={11} />
-                <Tooltip contentStyle={{ background: '#111827', borderColor: '#374151' }} />
-                <Bar dataKey="violations" fill="#00f2fe" name="Violations" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="revenue" fill="#10b981" name="Revenue (₹)" radius={[4, 4, 0, 0]} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e8ec" />
+                <XAxis dataKey="zone_code" stroke="#475e75" fontSize={11} />
+                <YAxis stroke="#475e75" fontSize={11} />
+                <Tooltip contentStyle={{ background: '#ffffff', borderColor: '#dbe2e8', borderRadius: '8px', color: '#223548' }} />
+                <Bar dataKey="violations" fill="#0057d2" name="Violations" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="revenue" fill="#107e3e" name="Revenue (₹)" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>

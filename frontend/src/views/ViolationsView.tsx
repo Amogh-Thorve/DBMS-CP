@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { violationsApi, finesApi } from '../api/services';
 import type { Violation, Fine } from '../types';
 import { Plus, Eye, X } from 'lucide-react';
+import { HeroBand } from '../components/HeroBand';
 
 export const ViolationsView: React.FC = () => {
   const [violations, setViolations] = useState<Violation[]>([]);
@@ -66,6 +67,17 @@ export const ViolationsView: React.FC = () => {
 
   return (
     <div>
+      <HeroBand
+        badge="Enforcement Directorate"
+        title="Traffic Infractions & Violations"
+        subtitle="Automated ANPR infractions, optical evidence telemetry, and statutory municipal fine issuance."
+        actions={
+          <button className="btn-primary" onClick={() => setShowAddModal(true)}>
+            <Plus size={16} /> Issue Violation & Fine
+          </button>
+        }
+      />
+
       <div className="table-card">
         <div className="table-toolbar">
           <div style={{ display: 'flex', gap: '0.75rem', flex: 1 }}>

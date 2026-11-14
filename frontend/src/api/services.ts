@@ -2,7 +2,8 @@ import { apiClient } from './client';
 import type {
   DashboardSummary, AnalyticsZone, AnalyticsType, AnalyticsCollection, AnalyticsRepeatOffender,
   ViolationTrend, Vehicle, Owner, Driver, License, TrafficZone, Road, Camera, VehicleEvent,
-  Violation, Fine, Payment, Appeal, Officer, Evidence, SearchResult, SystemHealth, SystemDependenciesHealth, TokenResponse, User
+  Violation, Fine, Payment, Appeal, Officer, Evidence, SearchResult, SystemHealth, SystemDependenciesHealth, TokenResponse, User,
+  RadarCamera, RadarEventPayload, RadarCitation, FrameOCRResult
 } from '../types';
 
 export const authApi = {
@@ -276,3 +277,45 @@ export const healthApi = {
     return res.data;
   }
 };
+
+export const radarApi = {
+  getCameras: async (): Promise<RadarCamera[]> => {
+    const res = await apiClient.get<RadarCamera[]>('/anpr/cameras');
+    return res.data;
+  },
+  calculateSpeed: async (deltaMeters: number, deltaTimeSec: number, fps: number = 30): Promise<any> => {
+    const res = await apiClient.post('/anpr/calculate-speed', null, {
+      params: { delta_meters: deltaMeters, delta_time_sec: deltaTimeSec, fps }
+    });
+    return res.data;
+  },
+  submitRadarEvent: async (payload: RadarEventPayload): Promise<RadarCitation> => {
+    const res = await apiClient.post<RadarCitation>('/anpr/speed-radar-event', payload);
+    return res.data;
+  },
+  processFrameOcr: async (file: File): Promise<FrameOCRResult> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await apiClient.post<FrameOCRResult>('/anpr/process-frame', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    return res.data;
+  },
+  processFrameBase64: async (imageB64: string, cameraId?: number): Promise<FrameOCRResult> => {
+    const res = await apiClient.post<FrameOCRResult>('/anpr/process-frame-base64', {
+      image_b64: imageB64,
+      camera_id: cameraId
+    });
+    return res.data;
+  },
+  processVideoFile: async (file: File, cameraId: number = 1): Promise<any> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('camera_id', cameraId.toString());
+    const res = await apiClient.post('/anpr/process-video', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    return res.data;
+  }
+};
+

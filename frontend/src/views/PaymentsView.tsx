@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { paymentsApi } from '../api/services';
 import type { Payment } from '../types';
 import { CheckCircle2 } from 'lucide-react';
+import { HeroBand } from '../components/HeroBand';
 
 export const PaymentsView: React.FC = () => {
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -28,6 +29,12 @@ export const PaymentsView: React.FC = () => {
 
   return (
     <div>
+      <HeroBand
+        badge="Financial Settlements"
+        title="Municipal Revenue & Payments Ledger"
+        subtitle="ACID Transaction History, Digital Gateway Settlements, and Treasury Fund Allocation."
+      />
+
       <div className="table-card">
         <div className="table-toolbar">
           <div style={{ flex: 1 }}>

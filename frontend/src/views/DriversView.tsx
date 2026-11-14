@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { driversApi, licensesApi } from '../api/services';
 import type { Driver, License } from '../types';
 import { Plus, X } from 'lucide-react';
+import { HeroBand } from '../components/HeroBand';
 
 export const DriversView: React.FC = () => {
   const [drivers, setDrivers] = useState<Driver[]>([]);
@@ -57,6 +58,17 @@ export const DriversView: React.FC = () => {
 
   return (
     <div>
+      <HeroBand
+        badge="Licensing Authority"
+        title="Licensed Drivers Registry"
+        subtitle="Driver's License issuance, endorsements, and disciplinary point balance tracking."
+        actions={
+          <button className="btn-primary" onClick={() => setShowAddModal(true)}>
+            <Plus size={16} /> Register Driver
+          </button>
+        }
+      />
+
       <div className="table-card">
         <div className="table-toolbar">
           <h3 className="chart-title">Registered Traffic Drivers & Demerit System</h3>

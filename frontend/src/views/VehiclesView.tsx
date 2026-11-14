@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { vehiclesApi, ownersApi, violationsApi } from '../api/services';
 import type { Vehicle, Owner, Violation } from '../types';
 import { Plus, Eye, Trash2, X } from 'lucide-react';
+import { HeroBand } from '../components/HeroBand';
 
 export const VehiclesView: React.FC = () => {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -92,6 +93,17 @@ export const VehiclesView: React.FC = () => {
 
   return (
     <div>
+      <HeroBand
+        badge="Asset Registry"
+        title="Vehicle Master Registry"
+        subtitle="Authoritative vehicular database tracking license registrations, ownership classifications, and mechanical specifications."
+        actions={
+          <button className="btn-primary" onClick={() => setShowAddModal(true)}>
+            <Plus size={16} /> Register Vehicle
+          </button>
+        }
+      />
+
       <div className="table-card">
         <div className="table-toolbar">
           <div style={{ display: 'flex', gap: '0.75rem', flex: 1 }}>

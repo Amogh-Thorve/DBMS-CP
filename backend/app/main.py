@@ -6,7 +6,7 @@ from app.db.seed import seed_initial_data
 from app.routers import (
     health, auth, owners, drivers, licenses, vehicles, cities, zones, roads,
     cameras, events, violations, evidence, fines, payments, appeals, officers,
-    search, analytics, reports
+    search, analytics, reports, radar
 )
 
 # Initialize SQLAlchemy Tables (If running against SQLite fallback / Dev)
@@ -58,6 +58,7 @@ app.include_router(officers.router, prefix=settings.API_V1_STR)
 app.include_router(search.router, prefix=settings.API_V1_STR)
 app.include_router(analytics.router, prefix=settings.API_V1_STR)
 app.include_router(reports.router, prefix=settings.API_V1_STR)
+app.include_router(radar.router, prefix=settings.API_V1_STR)
 
 
 @app.get("/", tags=["Root"])

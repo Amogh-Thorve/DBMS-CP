@@ -3,6 +3,7 @@ import { camerasApi, zonesApi } from '../api/services';
 import type { Camera, TrafficZone } from '../types';
 import { Camera as CameraIcon, Plus, X, MapPin, LayoutGrid } from 'lucide-react';
 import { InteractiveMap } from '../components/InteractiveMap';
+import { HeroBand } from '../components/HeroBand';
 
 export const CamerasView: React.FC = () => {
   const [cameras, setCameras] = useState<Camera[]>([]);
@@ -60,6 +61,17 @@ export const CamerasView: React.FC = () => {
 
   return (
     <div>
+      <HeroBand
+        badge="Surveillance Grid"
+        title="ANPR Camera Fleet & Telemetry"
+        subtitle="High-definition optical recognition sensors, speed calibration segments, and real-time network node health."
+        actions={
+          <button className="btn-primary" onClick={() => setShowAddModal(true)}>
+            <Plus size={16} /> Deploy Camera Node
+          </button>
+        }
+      />
+
       <div className="table-card" style={{ marginBottom: '1.5rem' }}>
         <div className="table-toolbar">
           <div style={{ display: 'flex', gap: '0.75rem', flex: 1, alignItems: 'center' }}>
