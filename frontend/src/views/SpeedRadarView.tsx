@@ -19,12 +19,14 @@ export const SpeedRadarView: React.FC<{ onNavigate?: (tab: string) => void }> = 
   const [gate2Pct, setGate2Pct] = useState<number>(70); // Exit gate % from top
 
   // Video Feed & Hardware State
-  // REAL_TRAFFIC / REAL_CLOSEUP are genuine filmed footage of Indian roads/vehicles.
+  // REAL_OVERHEAD is a genuine overhead/drone-angle highway clip (cars cross the frame top-to-bottom,
+  // matching the fixed-camera gate-crossing assumption the speed math depends on).
+  // REAL_CLOSEUP is genuine filmed footage of an Indian vehicle, used for plate OCR sampling only.
   // SYNTHETIC_CALIBRATED is an OpenCV-rendered clip used only to demonstrate the gate-crossing math on a known ground-truth speed.
-  type FeedSourceMode = 'REAL_TRAFFIC' | 'REAL_CLOSEUP' | 'SYNTHETIC_CALIBRATED' | 'UPLOAD_FILE' | 'WEBCAM';
-  const [feedMode, setFeedMode] = useState<FeedSourceMode>('REAL_TRAFFIC');
+  type FeedSourceMode = 'REAL_OVERHEAD' | 'REAL_CLOSEUP' | 'SYNTHETIC_CALIBRATED' | 'UPLOAD_FILE' | 'WEBCAM';
+  const [feedMode, setFeedMode] = useState<FeedSourceMode>('REAL_OVERHEAD');
   const FEED_LABELS: Record<FeedSourceMode, string> = {
-    REAL_TRAFFIC: 'Real Indian Road Traffic (Filmed Footage)',
+    REAL_OVERHEAD: 'Real Overhead Highway Traffic (Drone/CCTV Angle)',
     REAL_CLOSEUP: 'Real Indian Vehicle Close-up (Plate OCR Sample)',
     SYNTHETIC_CALIBRATED: 'Synthetic Calibration Clip (Known Ground-Truth Speed)',
     UPLOAD_FILE: 'Uploaded Custom Video File',
@@ -174,7 +176,7 @@ export const SpeedRadarView: React.FC<{ onNavigate?: (tab: string) => void }> = 
       video.srcObject = null;
     }
 
-    let videoSrc = '/videos/indian_cars_traffic_long.mp4';
+    let videoSrc = '/videos/overhead_highway_traffic.mp4';
     if (feedMode === 'REAL_CLOSEUP') {
       videoSrc = '/videos/indian_traffic_real.mp4';
     } else if (feedMode === 'SYNTHETIC_CALIBRATED') {
@@ -560,7 +562,7 @@ export const SpeedRadarView: React.FC<{ onNavigate?: (tab: string) => void }> = 
                 setFeedMode(newMode);
               }}
             >
-              <option value="REAL_TRAFFIC">{FEED_LABELS.REAL_TRAFFIC}</option>
+              <option value="REAL_OVERHEAD">{FEED_LABELS.REAL_OVERHEAD}</option>
               <option value="REAL_CLOSEUP">{FEED_LABELS.REAL_CLOSEUP}</option>
               <option value="SYNTHETIC_CALIBRATED">{FEED_LABELS.SYNTHETIC_CALIBRATED}</option>
               <option value="UPLOAD_FILE">{FEED_LABELS.UPLOAD_FILE} (.mp4/.webm)</option>
@@ -723,7 +725,7 @@ export const SpeedRadarView: React.FC<{ onNavigate?: (tab: string) => void }> = 
                     if (!fileToUpload) {
                       const videoPath = feedMode === 'REAL_CLOSEUP'
                         ? '/videos/indian_traffic_real.mp4'
-                        : (feedMode === 'SYNTHETIC_CALIBRATED' ? '/videos/traffic_highway_demo.mp4' : '/videos/indian_cars_traffic_long.mp4');
+                        : (feedMode === 'SYNTHETIC_CALIBRATED' ? '/videos/traffic_highway_demo.mp4' : '/videos/overhead_highway_traffic.mp4');
                       const res = await fetch(videoPath);
                       const blob = await res.blob();
                       fileToUpload = new File([blob], 'demo_traffic.mp4', { type: 'video/mp4' });
@@ -802,7 +804,7 @@ export const SpeedRadarView: React.FC<{ onNavigate?: (tab: string) => void }> = 
                 <p style={{ fontSize: '13px', marginBottom: '18px', maxWidth: '420px', margin: '0 auto 18px', color: '#94a3b8' }}>
                   {feedMode === 'WEBCAM'
                     ? "Click below to activate your computer's webcam for live ANPR optical character recognition and speed measurement."
-                    : "Filmed footage of real Indian road traffic with moving vehicles and visible plates. Dual gates calculate velocity from frame transit time and issue citations."}
+                    : "Real overhead/drone footage of highway traffic. Vehicles cross the frame top-to-bottom, matching the fixed dual-gate camera angle the velocity math assumes."}
                 </p>
                 <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
                   <button className="btn-primary" onClick={startFeed}>
