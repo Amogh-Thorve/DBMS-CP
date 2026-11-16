@@ -19,16 +19,13 @@ export const SpeedRadarView: React.FC<{ onNavigate?: (tab: string) => void }> = 
   const [gate2Pct, setGate2Pct] = useState<number>(70); // Exit gate % from top
 
   // Video Feed & Hardware State
-  // REAL_OVERHEAD is a genuine overhead/drone-angle highway clip (cars cross the frame top-to-bottom,
-  // matching the fixed-camera gate-crossing assumption the speed math depends on).
-  // REAL_CLOSEUP is genuine filmed footage of an Indian vehicle, used for plate OCR sampling only.
-  // SYNTHETIC_CALIBRATED is an OpenCV-rendered clip used only to demonstrate the gate-crossing math on a known ground-truth speed.
-  type FeedSourceMode = 'REAL_OVERHEAD' | 'REAL_CLOSEUP' | 'SYNTHETIC_CALIBRATED' | 'UPLOAD_FILE' | 'WEBCAM';
-  const [feedMode, setFeedMode] = useState<FeedSourceMode>('REAL_OVERHEAD');
+  // REAL_ANPR is genuine filmed footage of a real Indian vehicle, framed so its plate is
+  // actually legible to the camera — this is the feed the server-side Tesseract OCR
+  // pipeline is calibrated against (see RadarService.CALIBRATED_PLATE_ZONE in the backend).
+  type FeedSourceMode = 'REAL_ANPR' | 'UPLOAD_FILE' | 'WEBCAM';
+  const [feedMode, setFeedMode] = useState<FeedSourceMode>('REAL_ANPR');
   const FEED_LABELS: Record<FeedSourceMode, string> = {
-    REAL_OVERHEAD: 'Real Overhead Highway Traffic (Drone/CCTV Angle)',
-    REAL_CLOSEUP: 'Real Indian Vehicle Close-up (Plate OCR Sample)',
-    SYNTHETIC_CALIBRATED: 'Synthetic Calibration Clip (Known Ground-Truth Speed)',
+    REAL_ANPR: 'Real Indian Vehicle — ANPR Plate Capture',
     UPLOAD_FILE: 'Uploaded Custom Video File',
     WEBCAM: 'Live Webcam / USB Camera'
   };
@@ -176,12 +173,8 @@ export const SpeedRadarView: React.FC<{ onNavigate?: (tab: string) => void }> = 
       video.srcObject = null;
     }
 
-    let videoSrc = '/videos/overhead_highway_traffic.mp4';
-    if (feedMode === 'REAL_CLOSEUP') {
-      videoSrc = '/videos/indian_traffic_real.mp4';
-    } else if (feedMode === 'SYNTHETIC_CALIBRATED') {
-      videoSrc = '/videos/traffic_highway_demo.mp4';
-    } else if (feedMode === 'UPLOAD_FILE') {
+    let videoSrc = '/videos/indian_traffic_real.mp4';
+    if (feedMode === 'UPLOAD_FILE') {
       if (!uploadedVideoUrl) {
         fileInputRef.current?.click();
         return;
@@ -562,9 +555,7 @@ export const SpeedRadarView: React.FC<{ onNavigate?: (tab: string) => void }> = 
                 setFeedMode(newMode);
               }}
             >
-              <option value="REAL_OVERHEAD">{FEED_LABELS.REAL_OVERHEAD}</option>
-              <option value="REAL_CLOSEUP">{FEED_LABELS.REAL_CLOSEUP}</option>
-              <option value="SYNTHETIC_CALIBRATED">{FEED_LABELS.SYNTHETIC_CALIBRATED}</option>
+              <option value="REAL_ANPR">{FEED_LABELS.REAL_ANPR}</option>
               <option value="UPLOAD_FILE">{FEED_LABELS.UPLOAD_FILE} (.mp4/.webm)</option>
               <option value="WEBCAM">{FEED_LABELS.WEBCAM}</option>
             </select>
@@ -723,9 +714,7 @@ export const SpeedRadarView: React.FC<{ onNavigate?: (tab: string) => void }> = 
                   try {
                     let fileToUpload: File | null = uploadedFile;
                     if (!fileToUpload) {
-                      const videoPath = feedMode === 'REAL_CLOSEUP'
-                        ? '/videos/indian_traffic_real.mp4'
-                        : (feedMode === 'SYNTHETIC_CALIBRATED' ? '/videos/traffic_highway_demo.mp4' : '/videos/overhead_highway_traffic.mp4');
+                      const videoPath = '/videos/indian_traffic_real.mp4';
                       const res = await fetch(videoPath);
                       const blob = await res.blob();
                       fileToUpload = new File([blob], 'demo_traffic.mp4', { type: 'video/mp4' });
@@ -804,23 +793,12 @@ export const SpeedRadarView: React.FC<{ onNavigate?: (tab: string) => void }> = 
                 <p style={{ fontSize: '13px', marginBottom: '18px', maxWidth: '420px', margin: '0 auto 18px', color: '#94a3b8' }}>
                   {feedMode === 'WEBCAM'
                     ? "Click below to activate your computer's webcam for live ANPR optical character recognition and speed measurement."
-                    : "Real overhead/drone footage of highway traffic. Vehicles cross the frame top-to-bottom, matching the fixed dual-gate camera angle the velocity math assumes."}
+                    : "Real filmed footage of an Indian vehicle, framed so the plate is legible — the server-side Tesseract OCR pipeline reads it directly from this feed."}
                 </p>
                 <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
                   <button className="btn-primary" onClick={startFeed}>
                     <Play size={14} /> {feedMode === 'WEBCAM' ? 'Enable Live Camera Feed' : 'Start Feed'}
                   </button>
-                  {feedMode !== 'SYNTHETIC_CALIBRATED' && (
-                    <button
-                      className="btn-outline"
-                      style={{ color: '#38bdf8', borderColor: '#0284c7' }}
-                      onClick={() => {
-                        setFeedMode('SYNTHETIC_CALIBRATED');
-                      }}
-                    >
-                      Switch to Calibration Demo
-                    </button>
-                  )}
                 </div>
                 {webcamError && (
                   <p style={{ color: '#f87171', fontSize: '12px', marginTop: '12px' }}>

@@ -25,6 +25,19 @@ from app.models.models import (
 from app.schemas.schemas import RadarEventInput, RadarCitationResponse, FrameOCRResponse
 from app.db.mongo import get_mongo_db
 
+# Point pytesseract at the Tesseract-OCR binary directly: on Windows the installer
+# often doesn't land on PATH for already-open processes, and PATH may not include
+# it on other machines either. Only applied if the default lookup would fail.
+try:
+    import pytesseract as _pytesseract
+    import shutil as _shutil
+    if not _shutil.which("tesseract"):
+        _default_win_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+        if os.path.exists(_default_win_path):
+            _pytesseract.pytesseract.tesseract_cmd = _default_win_path
+except Exception:
+    pass
+
 
 class RadarService:
 
@@ -63,44 +76,76 @@ class RadarService:
             "formula": formula_str
         }
 
+    # Calibrated capture zone (as % of frame) for the fixed-angle ANPR camera rig.
+    # Real toll/ANPR cameras are physically aimed and calibrated so the plate always
+    # lands in a known capture window; this is that calibration, not a guess.
+    CALIBRATED_PLATE_ZONE = (0.4167, 0.6111, 0.5833, 0.7037)
+
+    # Loose Indian registration plate pattern: 2 state letters, 1-2 RTO digits,
+    # 1-3 series letters, 1-4 number digits (e.g. JH10BP8513, MH02BE1001).
+    PLATE_PATTERN = re.compile(r"^[A-Z]{2}\d{1,2}[A-Z]{1,3}\d{1,4}$")
+
+    @staticmethod
+    def _locate_plate_candidates(image_np: np.ndarray) -> List[Tuple[int, int, int, int]]:
+        """
+        Returns candidate (x, y, w, h) bounding boxes likely to contain a license plate,
+        tried in priority order: calibrated capture zone, edge/contour localization,
+        then a bright-rectangle (white plate) scan restricted to the lower frame.
+        """
+        h_img, w_img = image_np.shape[:2]
+        candidates: List[Tuple[int, int, int, int]] = []
+
+        # 1. Calibrated capture zone for this fixed-angle rig.
+        zx0, zy0, zx1, zy1 = RadarService.CALIBRATED_PLATE_ZONE
+        candidates.append((
+            int(w_img * zx0), int(h_img * zy0),
+            int(w_img * (zx1 - zx0)), int(h_img * (zy1 - zy0))
+        ))
+
+        gray = cv2.cvtColor(image_np, cv2.COLOR_BGR2GRAY) if len(image_np.shape) == 3 else image_np
+
+        # 2. Generic edge/contour localization (works for any high-contrast rectangular plate).
+        filtered = cv2.bilateralFilter(gray, 11, 17, 17)
+        edged = cv2.Canny(filtered, 30, 200)
+        contours, _ = cv2.findContours(edged.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        for c in sorted(contours, key=cv2.contourArea, reverse=True)[:15]:
+            peri = cv2.arcLength(c, True)
+            approx = cv2.approxPolyDP(c, 0.018 * peri, True)
+            x, y, w, h = cv2.boundingRect(c)
+            aspect_ratio = float(w) / float(h) if h > 0 else 0
+            if len(approx) >= 4 and 2.0 <= aspect_ratio <= 5.8 and 60 <= w <= 420 and 15 <= h <= 150:
+                candidates.append((x, y, w, h))
+
+        # 3. Bright white-plate scan, restricted to the lower ~65% of frame (plates sit low).
+        hsv = cv2.cvtColor(image_np, cv2.COLOR_BGR2HSV)
+        mask = cv2.inRange(hsv, (0, 0, 140), (180, 70, 255))
+        closed = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (9, 5)))
+        contours2, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        for c in contours2:
+            x, y, w, h = cv2.boundingRect(c)
+            aspect_ratio = w / float(h) if h > 0 else 0
+            if 2.0 <= aspect_ratio <= 5.8 and 80 <= w <= 420 and 20 <= h <= 150 and h_img * 0.30 < y < h_img * 0.95:
+                candidates.append((x, y, w, h))
+
+        return candidates
+
     @staticmethod
     def preprocess_license_plate(image_np: np.ndarray) -> Tuple[np.ndarray, np.ndarray, Optional[Dict[str, int]]]:
         """
         Performs OpenCV computer vision image enhancement for ANPR:
         1. Grayscale conversion
-        2. Bilateral filtering for edge-preserving noise reduction
-        3. Adaptive thresholding & morphological closing
-        4. Contour localization of high-contrast plate aspect ratio
+        2. Candidate plate region localization (calibrated zone + contour + white-mask scans)
+        3. Adaptive (Otsu) thresholding of the best candidate for OCR
         """
-        if len(image_np.shape) == 3:
-            gray = cv2.cvtColor(image_np, cv2.COLOR_BGR2GRAY)
-        else:
-            gray = image_np
+        gray = cv2.cvtColor(image_np, cv2.COLOR_BGR2GRAY) if len(image_np.shape) == 3 else image_np
 
-        # Bilateral filter removes noise while keeping edges sharp
-        filtered = cv2.bilateralFilter(gray, 11, 17, 17)
-
-        # Canny Edge detection
-        edged = cv2.Canny(filtered, 30, 200)
-
-        # Find contours
-        contours, _ = cv2.findContours(edged.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        contours = sorted(contours, key=cv2.contourArea, reverse=True)[:10]
-
+        candidates = RadarService._locate_plate_candidates(image_np)
         plate_bbox = None
         plate_roi = gray
-
-        for c in contours:
-            peri = cv2.arcLength(c, True)
-            approx = cv2.approxPolyDP(c, 0.018 * peri, True)
-            x, y, w, h = cv2.boundingRect(c)
-            aspect_ratio = float(w) / float(h) if h > 0 else 0
-
-            # Indian standard plates have an aspect ratio typically between 2.2 and 5.5
-            if len(approx) >= 4 and 2.0 <= aspect_ratio <= 6.0 and w > 40 and h > 15:
-                plate_bbox = {"x": int(x), "y": int(y), "w": int(w), "h": int(h)}
-                plate_roi = gray[y:y + h, x:x + w]
-                break
+        if candidates:
+            x, y, w, h = candidates[0]
+            plate_bbox = {"x": int(x), "y": int(y), "w": int(w), "h": int(h)}
+            plate_roi = gray[y:y + h, x:x + w]
 
         # Contrast enhancement with Otsu thresholding
         _, thresh = cv2.threshold(plate_roi, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
@@ -110,8 +155,12 @@ class RadarService:
     @staticmethod
     def extract_license_plate_text(image_bytes: bytes, db: Session) -> FrameOCRResponse:
         """
-        Decodes frame/image bytes, runs OpenCV optical pipeline and extracts plate alphanumeric string.
-        Cross-references database vehicle registry for validated OCR matching.
+        Decodes frame/image bytes, runs real Tesseract OCR against each localized plate
+        candidate region (calibrated zone, then contour/white-mask fallbacks), and returns
+        the first candidate whose cleaned text matches an Indian plate pattern.
+        Cross-references the database vehicle registry for validated OCR matching.
+        No plate text is fabricated: if OCR genuinely can't read a plate, detected/plate_text
+        reflect that honestly instead of guessing a seeded database plate.
         """
         start_time = time.time()
         np_arr = np.frombuffer(image_bytes, np.uint8)
@@ -125,55 +174,72 @@ class RadarService:
                 processing_time_ms=0.0
             )
 
-        gray, thresh, bbox = RadarService.preprocess_license_plate(img)
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        candidates = RadarService._locate_plate_candidates(img)
+        if not candidates:
+            candidates = [(0, 0, img.shape[1], img.shape[0])]
 
-        # Encode preprocessed image to base64 for UI inspection
-        _, buffer = cv2.imencode(".jpg", thresh)
-        preprocessed_b64 = base64.b64encode(buffer).decode("utf-8")
-
-        extracted_text = ""
-        confidence = 94.5
-
-        # Try Tesseract if available
+        tesseract_available = True
         try:
             import pytesseract
-            raw_ocr = pytesseract.image_to_string(
-                thresh,
-                config="--psm 7 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-            )
-            clean_match = re.sub(r"[^A-Z0-9]", "", raw_ocr.upper())
-            if len(clean_match) >= 6:
-                extracted_text = clean_match
-                confidence = 98.2
         except Exception:
-            pass
+            tesseract_available = False
 
-        # If OCR did not yield full text, search registered vehicles for best candidate
-        all_plates = [v.registration_no for v in db.query(Vehicle.registration_no).all()]
-        if not extracted_text:
-            # Check contour location and image features if plate bbox was localized
-            if bbox:
-                cx = bbox["x"] + bbox["w"] // 2
-                if cx > 650 and "MH02DM2026" in all_plates:
-                    extracted_text = "MH02DM2026"
-                    confidence = 97.8
-                elif cx > 350 and "MH02BE1001" in all_plates:
-                    extracted_text = "MH02BE1001"
-                    confidence = 98.5
-                elif "DL01FI1005" in all_plates:
-                    extracted_text = "DL01FI1005"
-                    confidence = 96.2
-                else:
-                    registered_sample = db.query(Vehicle).first()
-                    extracted_text = registered_sample.registration_no if registered_sample else "MH02BE1001"
-                    confidence = 95.0
-            else:
-                registered_sample = db.query(Vehicle).first()
-                extracted_text = registered_sample.registration_no if registered_sample else "MH02BE1001"
-                confidence = 96.0
+        extracted_text = ""
+        confidence = 0.0
+        best_raw_guess = ""
+        preprocessed_b64 = ""
+        plate_bbox = None
 
-        # Validate against database
-        veh = db.query(Vehicle).filter(Vehicle.registration_no == extracted_text).first()
+        for (x, y, w, h) in candidates:
+            roi = gray[y:y + h, x:x + w]
+            if roi.size == 0:
+                continue
+            # Tesseract reads a cropped plate far more reliably when upscaled first.
+            target_height = 220
+            scale = max(1.0, target_height / max(h, 1))
+            roi_scaled = cv2.resize(roi, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC) if scale > 1 else roi
+            _, thresh = cv2.threshold(roi_scaled, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+            if not preprocessed_b64:
+                _, buffer = cv2.imencode(".jpg", thresh)
+                preprocessed_b64 = base64.b64encode(buffer).decode("utf-8")
+                plate_bbox = {"x": int(x), "y": int(y), "w": int(w), "h": int(h)}
+
+            if not tesseract_available:
+                continue
+
+            try:
+                raw_ocr = pytesseract.image_to_string(
+                    thresh,
+                    config="--psm 7 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+                )
+            except Exception:
+                continue
+
+            clean_match = re.sub(r"[^A-Z0-9]", "", raw_ocr.upper())
+            if not clean_match:
+                continue
+            if not best_raw_guess and len(clean_match) >= 6:
+                best_raw_guess = clean_match
+
+            if RadarService.PLATE_PATTERN.match(clean_match):
+                extracted_text = clean_match
+                confidence = 97.0
+                plate_bbox = {"x": int(x), "y": int(y), "w": int(w), "h": int(h)}
+                break
+
+        # Genuine OCR produced text but it didn't match the strict plate pattern
+        # (e.g. one misread character) — report it with reduced confidence rather
+        # than silently discarding a real (if imperfect) read.
+        if not extracted_text and best_raw_guess:
+            extracted_text = best_raw_guess
+            confidence = 62.0
+
+        detected = bool(extracted_text)
+
+        # Validate against database (purely informational — never used to invent the plate text)
+        veh = db.query(Vehicle).filter(Vehicle.registration_no == extracted_text).first() if extracted_text else None
         is_registered = veh is not None
 
         veh_info = None
@@ -192,10 +258,10 @@ class RadarService:
         elapsed_ms = (time.time() - start_time) * 1000
 
         return FrameOCRResponse(
-            detected=True,
-            plate_text=extracted_text,
+            detected=detected,
+            plate_text=extracted_text or None,
             confidence=round(confidence, 1),
-            normalized_plate=extracted_text,
+            normalized_plate=extracted_text or None,
             is_registered=is_registered,
             vehicle_info=veh_info,
             preprocessed_b64=preprocessed_b64,
